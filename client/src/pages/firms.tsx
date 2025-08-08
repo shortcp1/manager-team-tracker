@@ -303,7 +303,7 @@ export default function Firms() {
                           </div>
                           <div className="ml-4">
                             <p className="text-sm font-medium text-gray-900">{firm.name}</p>
-                            <p className="text-sm text-gray-500">{new URL(firm.url).hostname}</p>
+                            <p className="text-sm text-gray-500">{firm.url ? new URL(firm.url).hostname : 'No URL'}</p>
                           </div>
                         </div>
                       </td>
