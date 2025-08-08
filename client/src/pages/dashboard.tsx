@@ -1,11 +1,17 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StatsCard } from "@/components/ui/stats-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Building, Users, ArrowUpDown, Clock, Plus, Minus, Edit } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Building, Users, ArrowUpDown, Clock, Plus, Minus, Edit, RefreshCw } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Dashboard() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ["/api/stats"],
   });
@@ -16,6 +22,26 @@ export default function Dashboard() {
 
   const { data: firms, isLoading: firmsLoading } = useQuery({
     queryKey: ["/api/firms"],
+  });
+
+  const scrapeAllMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/scrape/all"),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/changes/recent"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/firms"] });
+      toast({
+        title: "Scrape Completed",
+        description: `Scraped ${data.firmsProcessed} firms. Found ${data.totalMembersFound} members, ${data.totalChangesDetected} changes detected.`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Scrape Failed",
+        description: "Failed to start scraping process. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   if (statsLoading || changesLoading || firmsLoading) {
@@ -178,6 +204,26 @@ export default function Dashboard() {
                   <span className="text-sm font-medium text-gray-900">Tomorrow 2:00 AM</span>
                 </div>
                 <p className="text-xs text-gray-500">Weekly schedule (Mondays at 2:00 AM)</p>
+              </div>
+              
+              <div className="pt-2">
+                <Button
+                  onClick={() => scrapeAllMutation.mutate()}
+                  disabled={scrapeAllMutation.isPending}
+                  className="w-full bg-primary hover:bg-primary-dark text-white"
+                >
+                  {scrapeAllMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Scraping...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Scrape Now
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           </CardContent>

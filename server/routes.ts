@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { webScraper } from "./services/scraper";
 import { schedulerService } from "./services/scheduler";
-import { insertFirmSchema, insertEmailSettingsSchema } from "@shared/schema";
+import { insertFirmSchema, insertEmailSettingsSchema, type Firm } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -211,6 +211,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error scraping firm:", error);
       res.status(500).json({ message: "Failed to scrape firm" });
+    }
+  });
+
+  app.post("/api/scrape/all", async (req, res) => {
+    try {
+      const firms = await storage.getAllFirms();
+      const activeFirms = firms.filter((firm: Firm) => firm.status === 'active');
+      
+      if (activeFirms.length === 0) {
+        return res.json({
+          firmsProcessed: 0,
+          totalMembersFound: 0,
+          totalChangesDetected: 0,
+          message: "No active firms to scrape",
+        });
+      }
+
+      let totalMembersFound = 0;
+      let totalChangesDetected = 0;
+      let firmsProcessed = 0;
+
+      for (const firm of activeFirms) {
+        try {
+          const result = await webScraper.scrapeFirm(firm);
+          
+          if (!result.error) {
+            const changesDetected = await webScraper.detectChanges(firm.id, result.members);
+            totalMembersFound += result.members.length;
+            totalChangesDetected += changesDetected;
+            firmsProcessed++;
+          }
+        } catch (error) {
+          console.error(`Error scraping firm ${firm.name}:`, error);
+          // Continue with other firms even if one fails
+        }
+      }
+      
+      res.json({
+        firmsProcessed,
+        totalMembersFound,
+        totalChangesDetected,
+        message: `Successfully scraped ${firmsProcessed} of ${activeFirms.length} active firms`,
+      });
+    } catch (error) {
+      console.error("Error scraping all firms:", error);
+      res.status(500).json({ message: "Failed to scrape firms" });
     }
   });
 
