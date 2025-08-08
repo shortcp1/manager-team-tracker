@@ -13,7 +13,7 @@ export interface ScrapedMember {
 }
 
 export class WebScraper {
-  private browser: puppeteer.Browser | null = null;
+  private browser: any | null = null;
 
   async initialize() {
     if (!this.browser) {
@@ -134,7 +134,7 @@ export class WebScraper {
     return this.deduplicateMembers(members);
   }
 
-  private extractMemberInfo($: cheerio.CheerioAPI, element: cheerio.Cheerio, baseUrl: string): ScrapedMember | null {
+  private extractMemberInfo($: cheerio.CheerioAPI, element: any, baseUrl: string): ScrapedMember | null {
     try {
       // Try to extract name
       const nameSelectors = ['h1', 'h2', 'h3', 'h4', '.name', '[class*="name"]', 'strong', 'b'];

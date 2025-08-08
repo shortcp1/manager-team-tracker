@@ -4,16 +4,13 @@ import { webScraper } from './scraper';
 import { emailService } from './email';
 
 export class SchedulerService {
-  private scheduledTask: cron.ScheduledTask | null = null;
+  private scheduledTask: any | null = null;
 
   start() {
     // Schedule scraping every Monday at 2:00 AM
     this.scheduledTask = cron.schedule('0 2 * * 1', async () => {
       console.log('Starting scheduled scrape job...');
       await this.runScrapingJob();
-    }, {
-      scheduled: true,
-      timezone: "America/New_York"
     });
 
     console.log('Scheduler started - Weekly scraping every Monday at 2:00 AM EST');

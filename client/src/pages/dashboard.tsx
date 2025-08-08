@@ -62,28 +62,28 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
           title="Total Firms"
-          value={stats?.totalFirms || 0}
+          value={(stats as any)?.totalFirms || 0}
           icon={Building}
           iconColor="text-primary"
           iconBg="bg-blue-50"
         />
         <StatsCard
           title="Team Members"
-          value={stats?.totalMembers || 0}
+          value={(stats as any)?.totalMembers || 0}
           icon={Users}
           iconColor="text-secondary"
           iconBg="bg-green-50"
         />
         <StatsCard
           title="Changes This Week"
-          value={stats?.weeklyChanges || 0}
+          value={(stats as any)?.weeklyChanges || 0}
           icon={ArrowUpDown}
           iconColor="text-warning"
           iconBg="bg-orange-50"
         />
         <StatsCard
           title="Last Scrape"
-          value={stats?.lastScrape ? formatDistanceToNow(new Date(stats.lastScrape), { addSuffix: true }) : 'Never'}
+          value={(stats as any)?.lastScrape ? formatDistanceToNow(new Date((stats as any).lastScrape), { addSuffix: true }) : 'Never'}
           icon={Clock}
           iconColor="text-secondary"
           iconBg="bg-green-50"
@@ -99,9 +99,9 @@ export default function Dashboard() {
             <p className="text-sm text-gray-500">Latest team member updates</p>
           </CardHeader>
           <CardContent>
-            {recentChanges && recentChanges.length > 0 ? (
+            {recentChanges && (recentChanges as any[]).length > 0 ? (
               <div className="space-y-4">
-                {recentChanges.slice(0, 5).map((change: any) => (
+                {(recentChanges as any[]).slice(0, 5).map((change: any) => (
                   <div key={change.id} className="flex items-start space-x-4 p-4 border border-gray-100 rounded-lg">
                     <div className={`w-8 h-8 ${getChangeBgColor(change.changeType)} rounded-full flex items-center justify-center flex-shrink-0`}>
                       {getChangeIcon(change.changeType)}
@@ -201,7 +201,7 @@ export default function Dashboard() {
           </div>
         </CardHeader>
         <CardContent>
-          {firms && firms.length > 0 ? (
+          {firms && (firms as any[]).length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -213,7 +213,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {firms.slice(0, 5).map((firm: any) => (
+                  {(firms as any[]).slice(0, 5).map((firm: any) => (
                     <tr key={firm.id} className="hover:bg-gray-50">
                       <td className="py-4">
                         <div className="flex items-center">
