@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { useLocation, useRoute } from "wouter";
 import { 
   LayoutDashboard, 
   Building, 
@@ -29,7 +29,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -70,25 +70,25 @@ export function Sidebar({ isOpen, onClose, className }: SidebarProps) {
         {navigation.map((item) => {
           const isActive = location === item.href;
           return (
-            <Link key={item.name} href={item.href}>
-              <a
+            <button
+              key={item.name}
+              onClick={() => setLocation(item.href)}
+              className={cn(
+                "w-full group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
+                isActive
+                  ? "bg-primary text-white"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              )}
+              title={collapsed ? item.name : undefined}
+            >
+              <item.icon
                 className={cn(
-                  "group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors",
-                  isActive
-                    ? "bg-primary text-white"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  "flex-shrink-0 h-5 w-5",
+                  collapsed ? "mx-auto" : "mr-3"
                 )}
-                title={collapsed ? item.name : undefined}
-              >
-                <item.icon
-                  className={cn(
-                    "flex-shrink-0 h-5 w-5",
-                    collapsed ? "mx-auto" : "mr-3"
-                  )}
-                />
-                {!collapsed && item.name}
-              </a>
-            </Link>
+              />
+              {!collapsed && item.name}
+            </button>
           );
         })}
       </nav>
