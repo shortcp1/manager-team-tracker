@@ -23,9 +23,9 @@ export default function Settings() {
     queryKey: ["/api/settings/email"],
   });
 
-  const form = useForm<InsertEmailSettings>({
+  const form = useForm({
     resolver: zodResolver(insertEmailSettingsSchema),
-    values: emailSettings || { recipients: [], enabled: true },
+    values: (emailSettings as any) || { recipients: [], enabled: true },
   });
 
   const updateEmailSettingsMutation = useMutation({
@@ -62,7 +62,7 @@ export default function Settings() {
 
   const removeRecipient = (email: string) => {
     const currentRecipients = form.getValues('recipients') || [];
-    form.setValue('recipients', currentRecipients.filter(r => r !== email));
+    form.setValue('recipients', currentRecipients.filter((r: any) => r !== email));
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -258,7 +258,7 @@ export default function Settings() {
               <div className="flex items-center space-x-2 mt-1">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                 <p className="text-sm text-gray-500">
-                  {emailSettings?.enabled ? "Enabled" : "Disabled"}
+                  {(emailSettings as any)?.enabled ? "Enabled" : "Disabled"}
                 </p>
               </div>
             </div>

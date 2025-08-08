@@ -125,7 +125,7 @@ export default function Firms() {
     updateFirmMutation.mutate({ id: firm.id, data: { status: newStatus } });
   };
 
-  const filteredFirms = firms?.filter((firm: any) => {
+  const filteredFirms = (firms as any[] || []).filter((firm: any) => {
     const matchesSearch = firm.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType = typeFilter === "all" || firm.type === typeFilter;
     const matchesStatus = statusFilter === "all" || firm.status === statusFilter;

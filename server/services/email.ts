@@ -91,7 +91,7 @@ export class EmailService {
         <div class="content">
     `;
 
-    for (const [firmName, firmChanges] of changesByFirm) {
+    for (const [firmName, firmChanges] of Array.from(changesByFirm)) {
       html += `
         <div class="firm-section">
           <div class="firm-name">${firmName}</div>
@@ -128,7 +128,7 @@ export class EmailService {
     
     let text = `PE/VC Team Monitor - Team Changes Detected\n\n`;
 
-    for (const [firmName, firmChanges] of changesByFirm) {
+    for (const [firmName, firmChanges] of Array.from(changesByFirm)) {
       text += `${firmName}:\n`;
       text += '='.repeat(firmName.length + 1) + '\n';
 

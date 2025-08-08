@@ -19,7 +19,7 @@ export default function TeamMembers() {
     queryKey: ["/api/firms"],
   });
 
-  const filteredMembers = members?.filter((member: any) => {
+  const filteredMembers = (members as any[] || []).filter((member: any) => {
     const matchesSearch = 
       member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (member.title && member.title.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -65,7 +65,7 @@ export default function TeamMembers() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Firms</SelectItem>
-                {firms?.map((firm: any) => (
+                {(firms as any[] || []).map((firm: any) => (
                   <SelectItem key={firm.id} value={firm.name}>
                     {firm.name}
                   </SelectItem>

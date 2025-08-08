@@ -23,7 +23,7 @@ export default function ChangeHistory() {
     queryKey: ["/api/firms"],
   });
 
-  const filteredChanges = changes?.filter((change: any) => {
+  const filteredChanges = (changes as any[] || []).filter((change: any) => {
     const matchesSearch = 
       change.memberName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (change.firmName && change.firmName.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -106,7 +106,7 @@ export default function ChangeHistory() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Firms</SelectItem>
-                {firms?.map((firm: any) => (
+                {(firms as any[] || []).map((firm: any) => (
                   <SelectItem key={firm.id} value={firm.name}>
                     {firm.name}
                   </SelectItem>

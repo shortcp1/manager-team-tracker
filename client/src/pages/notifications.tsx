@@ -16,11 +16,11 @@ export default function Notifications() {
   const isLoading = changesLoading || scrapesLoading;
 
   // Group notifications by type and date
-  const notifications = [];
+  const notifications: any[] = [];
 
   // Add change notifications
   if (recentChanges) {
-    recentChanges.forEach((change: any) => {
+    (recentChanges as any[]).forEach((change: any) => {
       notifications.push({
         id: `change-${change.id}`,
         type: 'change',
@@ -36,7 +36,7 @@ export default function Notifications() {
 
   // Add scrape notifications (only errors or significant events)
   if (scrapes) {
-    scrapes.forEach((scrape: any) => {
+    (scrapes as any[]).forEach((scrape: any) => {
       if (scrape.status === 'error' || scrape.changesDetected > 0) {
         notifications.push({
           id: `scrape-${scrape.id}`,
