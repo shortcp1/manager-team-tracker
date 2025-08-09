@@ -36,6 +36,23 @@ export const teamMembers = pgTable("team_members", {
   lastSeen: timestamp("last_seen").notNull().default(sql`now()`),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+  // Enrichment fields
+  linkedinUrl: text("linkedin_url"),
+  email: text("email"),
+  phone: text("phone"),
+  location: text("location"),
+  officeCountry: text("office_country"),
+  department: text("department"),
+  seniorityLevel: text("seniority_level"),
+  normalizedTitle: text("normalized_title"),
+  normalizedName: text("normalized_name"),
+  entityKey: text("entity_key"),
+  twitterUrl: text("twitter_url"),
+  githubUrl: text("github_url"),
+  personalWebsite: text("personal_website"),
+  orderIndex: integer("order_index"),
+  category: text("category"),
+  profilePhotoHash: text("profile_photo_hash"),
 });
 
 export const changeHistory = pgTable("change_history", {
@@ -60,6 +77,9 @@ export const scrapeHistory = pgTable("scrape_history", {
   errorMessage: text("error_message"),
   scrapedAt: timestamp("scraped_at").notNull().default(sql`now()`),
   duration: integer("duration"), // milliseconds
+  // Artifact fields for auditability
+  screenshotPath: text("screenshot_path"),
+  htmlPath: text("html_path"),
 });
 
 export const emailSettings = pgTable("email_settings", {

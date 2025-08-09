@@ -18,7 +18,7 @@ export class EmailService {
         },
       };
 
-      this.transporter = nodemailer.createTransporter(emailConfig);
+      this.transporter = nodemailer.createTransport(emailConfig as any);
     }
 
     return this.transporter;
@@ -39,13 +39,13 @@ export class EmailService {
 
       const mailOptions = {
         from: process.env.SMTP_FROM || process.env.EMAIL_FROM || 'noreply@teammonitor.com',
-        to: settings.recipients,
+        to: settings.recipients.join(','),
         subject: `PE/VC Team Monitor: ${changes.length} team change${changes.length !== 1 ? 's' : ''} detected`,
         html: htmlContent,
         text: textContent,
-      };
+      } as nodemailer.SendMailOptions;
 
-      await transporter.sendMail(mailOptions);
+      await transporter!.sendMail(mailOptions);
       
       // Mark changes as email sent
       for (const change of changes) {
