@@ -1,0 +1,23 @@
+7:01:03 AM [express] POST /api/scrape/firm/66b90848-de68-444e-92b0-f0ac3320fea4 500 in 155ms :: {"me…
+7:08:05 AM [express] GET /api/changes/recent/[object%20Object] 200 in 6ms
+7:08:05 AM [express] GET /api/scrapes/[object%20Object] 200 in 6ms
+7:08:06 AM [express] GET /api/settings/email 200 in 526ms :: {"id":"826f6861-ea76-4c2c-b366-b06023d3…
+7:08:11 AM [express] GET /api/scrapes/[object%20Object] 200 in 4ms
+7:08:11 AM [express] GET /api/changes/recent/[object%20Object] 200 in 6ms
+7:08:13 AM [express] GET /api/changes 200 in 62ms :: []
+7:08:20 AM [express] GET /api/stats 200 in 201ms :: {"totalFirms":1,"totalMembers":0,"weeklyChanges"…
+7:08:34 AM [express] GET /api/changes/recent 304 in 191ms :: []
+7:08:35 AM [express] GET /api/firms 200 in 538ms :: [{"id":"66b90848-de68-444e-92b0-f0ac3320fea4","n…
+7:09:36 AM [express] POST /api/firms 201 in 209ms :: {"id":"e89f47b7-1c40-44ab-a6e8-cb6640c4e1b2","n…
+7:09:36 AM [express] GET /api/firms 200 in 247ms :: [{"id":"66b90848-de68-444e-92b0-f0ac3320fea4","n…
+7:11:06 AM [express] GET /api/stats 200 in 2673ms :: {"totalFirms":2,"totalMembers":0,"weeklyChanges…
+Error scraping Sequoia Capital: Error: Could not find Chrome (ver. 139.0.7258.66). This can occur if either
+ 1. you did not perform an installation before running the script (e.g. `npx puppeteer browsers install chrome`) or
+ 2. your cache path is incorrectly configured (which is: /home/runner/.cache/puppeteer).
+For (2), check out our guide on configuring puppeteer at https://pptr.dev/guides/configuration.
+    at ChromeLauncher.resolveExecutablePath (/home/runner/workspace/node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js:276:27)
+    at ChromeLauncher.computeLaunchArguments (/home/runner/workspace/node_modules/puppeteer-core/src/node/ChromeLauncher.ts:128:16)
+    at async ChromeLauncher.launch (/home/runner/workspace/node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js:48:28)
+    at async WebScraper.initialize (/home/runner/workspace/server/services/scraper.ts:20:22)
+    at async WebScraper.scrapeFirm (/home/runner/workspace/server/services/scraper.ts:41:7)
+    at async <anonymous> (/home/runner/workspace/server/routes.ts:237:26)
