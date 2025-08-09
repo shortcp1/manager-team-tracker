@@ -19,7 +19,19 @@ export class WebScraper {
     if (!this.browser) {
       this.browser = await puppeteer.launch({
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-backgrounding-occluded-windows',
+        ],
       });
     }
   }
@@ -31,6 +43,64 @@ export class WebScraper {
     }
   }
 
+  async scrapeFirmWithFallback(firm: Firm): Promise<{
+    members: ScrapedMember[];
+    error?: string;
+  }> {
+    const startTime = Date.now();
+    
+    try {
+      console.log(`Scraping ${firm.name} at ${firm.teamPageUrl}`);
+      
+      // Try with simple HTTP request first (faster and more reliable)
+      const response = await fetch(firm.teamPageUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const html = await response.text();
+      const members = await this.parseTeamPage(html, firm.url);
+      
+      console.log(`Successfully scraped ${firm.name} using HTTP fallback - found ${members.length} members`);
+      return { members };
+      
+    } catch (httpError) {
+      console.log(`HTTP scraping failed for ${firm.name}, trying Puppeteer...`);
+      
+      // Fallback to Puppeteer for JavaScript-heavy sites
+      try {
+        await this.initialize();
+        
+        const page = await this.browser!.newPage();
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+        
+        await page.goto(firm.teamPageUrl, { 
+          waitUntil: 'networkidle2',
+          timeout: 30000 
+        });
+
+        // Wait for dynamic content to load
+        await page.waitForTimeout(2000);
+
+        const html = await page.content();
+        const members = await this.parseTeamPage(html, firm.url);
+
+        await page.close();
+        
+        console.log(`Successfully scraped ${firm.name} using Puppeteer - found ${members.length} members`);
+        return { members };
+      } catch (puppeteerError) {
+        console.error(`Both HTTP and Puppeteer scraping failed for ${firm.name}:`, puppeteerError);
+        throw puppeteerError;
+      }
+    }
+  }
+
   async scrapeFirm(firm: Firm): Promise<{
     members: ScrapedMember[];
     error?: string;
@@ -38,31 +108,13 @@ export class WebScraper {
     const startTime = Date.now();
     
     try {
-      await this.initialize();
-      
-      const page = await this.browser!.newPage();
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
-      
-      console.log(`Scraping ${firm.name} at ${firm.teamPageUrl}`);
-      
-      await page.goto(firm.teamPageUrl, { 
-        waitUntil: 'networkidle2',
-        timeout: 30000 
-      });
-
-      // Wait for dynamic content to load
-      await page.waitForTimeout(2000);
-
-      const html = await page.content();
-      const members = await this.parseTeamPage(html, firm.url);
-
-      await page.close();
+      const result = await this.scrapeFirmWithFallback(firm);
 
       // Record scrape history
       await storage.createScrapeHistory({
         firmId: firm.id,
         status: 'success',
-        membersFound: members.length,
+        membersFound: result.members.length,
         changesDetected: 0, // Will be updated after change detection
         duration: Date.now() - startTime,
       });
@@ -70,7 +122,7 @@ export class WebScraper {
       // Update firm's last scraped timestamp
       await storage.updateFirm(firm.id, { lastScraped: new Date() });
 
-      return { members };
+      return result;
     } catch (error) {
       console.error(`Error scraping ${firm.name}:`, error);
 
