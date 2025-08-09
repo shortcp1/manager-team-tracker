@@ -1,0 +1,8 @@
+Live list of issues
+  Edit button in Firms page doesn't work
+
+
+Backlog
+  Add logins
+  Ability to add new types
+  Sessions / login history so that settings and firms are unique per user
