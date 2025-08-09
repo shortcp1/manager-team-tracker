@@ -6,3 +6,5 @@ Backlog
   Add logins
   Ability to add new types
   Sessions / login history so that settings and firms are unique per user
+  Linkedin account integration
+  Maybe other customers: News articles linking with info about new companies, asets, etc. and where your network (or network's network) overlaps with exciting updates
