@@ -5,7 +5,8 @@
       "src": "server/index.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["server/**", "shared/**", "drizzle/**"]
+        "includeFiles": ["server/**", "shared/**", "drizzle/**"],
+        "maxLambdaSize": "50mb"
       }
     },
     {
@@ -28,11 +29,6 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "functions": {
-    "server/index.ts": {
-      "maxDuration": 30
-    }
   },
   "installCommand": "npm install && npx playwright install chromium"
 }
