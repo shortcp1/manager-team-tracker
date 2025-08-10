@@ -1,5 +1,4 @@
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import * as cheerio from 'cheerio';
 import fs from 'fs';
 import path from 'path';
@@ -9,8 +8,7 @@ import { type Firm, type TeamMember, type InsertTeamMember } from '@shared/schem
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Enable stealth to reduce bot detection
-puppeteer.use(StealthPlugin());
+// Playwright has built-in stealth capabilities
 
 export interface ScrapedMember {
   name: string;
@@ -39,51 +37,50 @@ export interface ScrapedMember {
 }
 
 export class WebScraper {
-  private browser: any | null = null;
+  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
 
   async initialize() {
     if (!this.browser) {
-      this.browser = await puppeteer.launch({
+      this.browser = await chromium.launch({
         headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--disable-gpu',
-          '--disable-extensions',
-          '--disable-background-timer-throttling',
-          '--disable-renderer-backgrounding',
-          '--disable-backgrounding-occluded-windows',
         ],
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+      });
+      this.context = await this.browser.newContext({
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 900 },
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
       });
     }
   }
 
   async close() {
+    if (this.context) {
+      await this.context.close();
+      this.context = null;
+    }
     if (this.browser) {
       await this.browser.close();
       this.browser = null;
     }
   }
 
-  private async preparePage(page: any) {
-    const width = 1280 + Math.floor(Math.random() * 200);
-    const height = 900 + Math.floor(Math.random() * 200);
-    await page.setViewport({ width, height });
-    await page.setUserAgent(
-      `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${115 + Math.floor(Math.random() * 10)}.0.0.0 Safari/537.36`
-    );
+  private async preparePage(page: Page) {
+    // Playwright handles user agent and viewport in context creation
+    // Add any additional page-specific setup here if needed
   }
 
   private async delay(ms: number) {
     await new Promise((res) => setTimeout(res, ms));
   }
 
-  private async clickAllTabs(page: any) {
+  private async clickAllTabs(page: Page) {
     const tabSelectors = [
       '[role="tab"]',
       '.tabs button, .tabs [role="tab"]',
@@ -92,12 +89,12 @@ export class WebScraper {
     ];
 
     for (const sel of tabSelectors) {
-      const tabs = await page.$$(sel);
+      const tabs = await page.locator(sel).all();
       if (tabs.length > 0) {
         for (let i = 0; i < Math.min(tabs.length, 12); i++) {
           try {
-            await tabs[i].click({ delay: 25 });
-            await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => {});
+            await tabs[i].click();
+            await page.waitForLoadState('networkidle', { timeout: 5000 });
             await this.delay(200);
           } catch {}
         }
@@ -106,7 +103,7 @@ export class WebScraper {
     }
   }
 
-  private async clickLoadMore(page: any) {
+  private async clickLoadMore(page: Page) {
     for (let iter = 0; iter < 5; iter++) {
       const clicked = await page.evaluate(() => {
         const nodes = Array.from(document.querySelectorAll('button, a')) as HTMLElement[];
@@ -118,12 +115,12 @@ export class WebScraper {
         return false;
       });
       if (!clicked) break;
-      await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 5000 });
       await this.delay(250);
     }
   }
 
-  private async infiniteScroll(page: any) {
+  private async infiniteScroll(page: Page) {
     let lastHeight = await page.evaluate('document.body.scrollHeight');
     let stableCount = 0;
     for (let i = 0; i < 10; i++) {
@@ -138,6 +135,185 @@ export class WebScraper {
         lastHeight = newHeight;
       }
     }
+  }
+
+  private async detectAndHandlePagination(page: Page): Promise<ScrapedMember[]> {
+    const allMembers: ScrapedMember[] = [];
+    let pageNumber = 1;
+    const maxPages = 10; // Safety limit
+
+    do {
+      console.log(`Scraping page ${pageNumber}...`);
+      
+      // Parse current page
+      const html = await page.content();
+      const currentPageMembers = await this.parseTeamPage(html, page.url());
+      allMembers.push(...currentPageMembers);
+
+      // Look for pagination - try multiple common patterns
+      const nextButton = await this.findNextButton(page);
+      if (!nextButton) break;
+
+      console.log(`Found next button, navigating to page ${pageNumber + 1}...`);
+      await nextButton.click();
+      await page.waitForLoadState('networkidle', { timeout: 10000 });
+      pageNumber++;
+
+    } while (pageNumber <= maxPages);
+
+    return this.deduplicateMembers(allMembers);
+  }
+
+  private async findNextButton(page: Page) {
+    // Common pagination selectors in order of preference
+    const nextSelectors = [
+      // Text-based (most reliable)
+      'button:has-text("Next")',
+      'a:has-text("Next")',
+      'button:has-text("Load More")',
+      'a:has-text("Load More")',
+      'button:has-text("Show More")',
+      'a:has-text("Show More")',
+      
+      // Class/attribute-based
+      '.pagination .next:not(.disabled)',
+      '.pagination-next:not(.disabled)',
+      'button[aria-label*="next"]:not([disabled])',
+      'a[aria-label*="next"]',
+      
+      // Icon-based (arrows, etc)
+      'button:has(.icon-arrow-right):not([disabled])',
+      'a:has(.icon-arrow-right)',
+      'button:has([data-icon="arrow-right"]):not([disabled])',
+      
+      // Generic patterns
+      '.page-numbers .next',
+      '.pager .next:not(.disabled)',
+    ];
+
+    for (const selector of nextSelectors) {
+      try {
+        const element = page.locator(selector).first();
+        if (await element.isVisible({ timeout: 1000 })) {
+          return element;
+        }
+      } catch {
+        // Continue to next selector
+      }
+    }
+
+    return null;
+  }
+
+  private async detectAndHandleStageFilters(page: Page): Promise<ScrapedMember[]> {
+    const allMembers: ScrapedMember[] = [];
+    
+    // Detect stage/role filters
+    const stageFilters = await this.detectStageFilters(page);
+    
+    if (stageFilters.length === 0) {
+      // No filters detected, scrape normally
+      return this.detectAndHandlePagination(page);
+    }
+
+    console.log(`Detected ${stageFilters.length} stage filters:`, stageFilters.map(f => f.name));
+
+    // Scrape each stage
+    for (const filter of stageFilters) {
+      try {
+        console.log(`Scraping stage: ${filter.name}...`);
+        
+        await filter.element.click();
+        await page.waitForLoadState('networkidle', { timeout: 10000 });
+        
+        // Handle pagination within this stage
+        const stageMembers = await this.detectAndHandlePagination(page);
+        
+        // Tag members with their stage
+        stageMembers.forEach(member => {
+          member.category = filter.name;
+        });
+        
+        allMembers.push(...stageMembers);
+        
+      } catch (error) {
+        console.warn(`Error scraping stage ${filter.name}:`, error);
+      }
+    }
+
+    return this.deduplicateMembers(allMembers);
+  }
+
+  private async detectStageFilters(page: Page): Promise<{name: string, element: any}[]> {
+    const filters: {name: string, element: any}[] = [];
+    
+    // Common filter patterns
+    const filterPatterns = [
+      // FacetWP (like Sequoia)
+      '.facetwp-radio:not(.checked)',
+      
+      // Tab-based filters
+      '[role="tab"]:has-text(i)',
+      'button[data-filter]',
+      'a[data-filter]',
+      
+      // Dropdown filters
+      'select[name*="stage"] option',
+      'select[name*="role"] option',
+      'select[name*="category"] option',
+      
+      // Button-based filters
+      'button:has-text("Growth")',
+      'button:has-text("Seed")',
+      'button:has-text("Early")',
+      'button:has-text("Partner")',
+      'button:has-text("Principal")',
+      'button:has-text("Associate")',
+    ];
+
+    for (const pattern of filterPatterns) {
+      try {
+        const elements = await page.locator(pattern).all();
+        
+        for (const element of elements) {
+          try {
+            const text = await element.textContent();
+            if (text && text.trim().length > 0) {
+              // Filter out generic words
+              const normalizedText = text.trim().toLowerCase();
+              if (this.isRelevantStageFilter(normalizedText)) {
+                filters.push({
+                  name: text.trim(),
+                  element: element
+                });
+              }
+            }
+          } catch {
+            // Skip elements that can't be read
+          }
+        }
+        
+        // If we found filters with this pattern, use them
+        if (filters.length > 0) break;
+        
+      } catch {
+        // Continue to next pattern
+      }
+    }
+
+    return filters;
+  }
+
+  private isRelevantStageFilter(text: string): boolean {
+    const relevantTerms = [
+      'seed', 'early', 'growth', 'late', 'venture',
+      'partner', 'principal', 'associate', 'analyst', 'director',
+      'investment', 'operating', 'operator', 'advisory',
+      'series a', 'series b', 'series c'
+    ];
+    
+    return relevantTerms.some(term => text.includes(term)) && 
+           !['all', 'any', 'filter', 'select', 'choose'].includes(text);
   }
 
   private buildArtifactPaths(firm: Firm) {
@@ -181,42 +357,44 @@ export class WebScraper {
         console.log(`Successfully scraped ${firm.name} via HTTP - found ${members.length} members`);
         return { members, html };
       } else {
-        console.log(`HTTP scrape for ${firm.name} returned ${members.length} members; trying Puppeteer fallback...`);
+        console.log(`HTTP scrape for ${firm.name} returned ${members.length} members; trying Playwright fallback...`);
         throw new Error('HTTP result insufficient');
       }
       
     } catch (httpError) {
-      console.log(`HTTP scraping failed for ${firm.name}, trying Puppeteer...`);
+      console.log(`HTTP scraping failed for ${firm.name}, trying Playwright...`);
       
-      // Fallback to Puppeteer for JavaScript-heavy sites
+      // Fallback to Playwright for JavaScript-heavy sites
       try {
         await this.initialize();
         
-        const page = await this.browser!.newPage();
+        const page = await this.context!.newPage();
         await this.preparePage(page);
         
         await page.goto(firm.teamPageUrl, { 
-          waitUntil: 'networkidle2',
+          waitUntil: 'networkidle',
           timeout: 45000 
         });
 
-        // Try DOM-anchored waits
+        // Try DOM-anchored waits and old tab/load more logic first
         await this.delay(500);
         await this.clickAllTabs(page);
         await this.clickLoadMore(page);
         await this.infiniteScroll(page);
 
+        // Now try new intelligent stage/pagination detection
+        const members = await this.detectAndHandleStageFilters(page);
+        
         const html = await page.content();
         const screenshot = await page.screenshot({ fullPage: true }) as Buffer;
-        const members = await this.parseTeamPage(html, firm.url);
 
         await page.close();
         
-        console.log(`Successfully scraped ${firm.name} using Puppeteer - found ${members.length} members`);
+        console.log(`Successfully scraped ${firm.name} using Playwright - found ${members.length} members`);
         return { members, html, screenshot };
-      } catch (puppeteerError) {
-        console.error(`Both HTTP and Puppeteer scraping failed for ${firm.name}:`, puppeteerError);
-        throw puppeteerError;
+      } catch (playwrightError) {
+        console.error(`Both HTTP and Playwright scraping failed for ${firm.name}:`, playwrightError);
+        throw playwrightError;
       }
     }
   }
