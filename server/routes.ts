@@ -285,6 +285,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin/Database endpoints
+  app.get("/api/admin/db-overview", async (req, res) => {
+    try {
+      const stats = await storage.getStats();
+      const recentChanges = await storage.getRecentChanges(7);
+      const recentScrapes = await storage.getScrapeHistory('', 10);
+      
+      res.json({
+        summary: stats,
+        recent: {
+          changes: recentChanges,
+          scrapes: recentScrapes,
+        },
+      });
+    } catch (error) {
+      console.error('Database overview error:', error);
+      res.status(500).json({ error: 'Failed to fetch database overview' });
+    }
+  });
+
   // Email settings endpoints
   app.get("/api/settings/email", async (req, res) => {
     try {
