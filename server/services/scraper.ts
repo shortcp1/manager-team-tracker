@@ -79,6 +79,10 @@ export class WebScraper {
     );
   }
 
+  private async delay(ms: number) {
+    await new Promise((res) => setTimeout(res, ms));
+  }
+
   private async clickAllTabs(page: any) {
     const tabSelectors = [
       '[role="tab"]',
@@ -94,7 +98,7 @@ export class WebScraper {
           try {
             await tabs[i].click({ delay: 25 });
             await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => {});
-            await page.waitForTimeout(200);
+            await this.delay(200);
           } catch {}
         }
         break;
@@ -103,27 +107,19 @@ export class WebScraper {
   }
 
   private async clickLoadMore(page: any) {
-    const candidates = [
-      'button:has-text("Load more")',
-      'button:has-text("More")',
-      'button:has-text("Show more")',
-      'a:has-text("Load more")',
-    ];
-
     for (let iter = 0; iter < 5; iter++) {
-      let clicked = false;
-      for (const sel of candidates) {
-        const handle = await page.$(sel);
-        if (handle) {
-          try {
-            await handle.click({ delay: 20 });
-            await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => {});
-            await page.waitForTimeout(250);
-            clicked = true;
-          } catch {}
+      const clicked = await page.evaluate(() => {
+        const nodes = Array.from(document.querySelectorAll('button, a')) as HTMLElement[];
+        const target = nodes.find((el) => /\b(load more|show more|more)\b/i.test(el.textContent || ''));
+        if (target) {
+          target.click();
+          return true;
         }
-      }
+        return false;
+      });
       if (!clicked) break;
+      await page.waitForNetworkIdle({ idleTime: 500, timeout: 5000 }).catch(() => {});
+      await this.delay(250);
     }
   }
 
@@ -132,7 +128,7 @@ export class WebScraper {
     let stableCount = 0;
     for (let i = 0; i < 10; i++) {
       await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-      await page.waitForTimeout(500);
+      await this.delay(500);
       const newHeight = await page.evaluate('document.body.scrollHeight');
       if (newHeight === lastHeight) {
         stableCount++;
@@ -181,8 +177,13 @@ export class WebScraper {
       const html = await response.text();
       const members = await this.parseTeamPage(html, firm.url);
       
-      console.log(`Successfully scraped ${firm.name} using HTTP fallback - found ${members.length} members`);
-      return { members, html };
+      if (members.length >= 5) {
+        console.log(`Successfully scraped ${firm.name} via HTTP - found ${members.length} members`);
+        return { members, html };
+      } else {
+        console.log(`HTTP scrape for ${firm.name} returned ${members.length} members; trying Puppeteer fallback...`);
+        throw new Error('HTTP result insufficient');
+      }
       
     } catch (httpError) {
       console.log(`HTTP scraping failed for ${firm.name}, trying Puppeteer...`);
@@ -200,7 +201,7 @@ export class WebScraper {
         });
 
         // Try DOM-anchored waits
-        await page.waitForTimeout(500);
+        await this.delay(500);
         await this.clickAllTabs(page);
         await this.clickLoadMore(page);
         await this.infiniteScroll(page);
@@ -280,7 +281,8 @@ export class WebScraper {
     }
   }
 
-  private async parseTeamPage(html: string, baseUrl: string): Promise<ScrapedMember[]> {
+  // Made public so scripts/tests can reuse it
+  async parseTeamPage(html: string, baseUrl: string): Promise<ScrapedMember[]> {
     const $ = cheerio.load(html);
     const members: ScrapedMember[] = [];
 
@@ -289,6 +291,12 @@ export class WebScraper {
 
     // Common selectors for team member sections
     const selectors = [
+      // Sequoia-specific likely containers/cards
+      '.team-members__grid .grid__instance',
+      '.grid__instance',
+      'a.ink',
+      '.ink',
+      // Generic fallbacks
       '.team-member',
       '.person',
       '.profile',
@@ -302,19 +310,13 @@ export class WebScraper {
     let orderIndex = 0;
     for (const selector of selectors) {
       const elements = $(selector);
-      
-      if (elements.length > 0) {
-        elements.each((_: number, element: any) => {
-          const member = this.extractMemberInfo($, $(element), baseUrl, orderIndex++);
-          if (member && member.name) {
-            members.push(member);
-          }
-        });
-        
-        if (members.length > 0) {
-          break; // Found members with this selector, no need to try others
+      if (elements.length === 0) continue;
+      elements.each((_: number, element: any) => {
+        const member = this.extractMemberInfo($, $(element), baseUrl, orderIndex++);
+        if (member && member.name) {
+          members.push(member);
         }
-      }
+      });
     }
 
     // Fallback: look for common patterns in the HTML
@@ -377,7 +379,7 @@ export class WebScraper {
   private extractMemberInfo($: cheerio.CheerioAPI, element: any, baseUrl: string, orderIndex?: number): ScrapedMember | null {
     try {
       // Try to extract name
-      const nameSelectors = ['h1', 'h2', 'h3', 'h4', '.name', '[class*="name"]', 'strong', 'b'];
+      const nameSelectors = ['h1', 'h2', 'h3', 'h4', '.name', '.ink__title', '[class*="name"]', 'strong', 'b'];
       let name = '';
       
       for (const nameSelector of nameSelectors) {
