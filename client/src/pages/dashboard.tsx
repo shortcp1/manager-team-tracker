@@ -12,15 +12,15 @@ export default function Dashboard() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery({
     queryKey: ["/api/stats"],
   });
 
-  const { data: recentChanges, isLoading: changesLoading } = useQuery({
+  const { data: recentChanges, isLoading: changesLoading, error: changesError } = useQuery({
     queryKey: ["/api/changes/recent"],
   });
 
-  const { data: firms, isLoading: firmsLoading } = useQuery({
+  const { data: firms, isLoading: firmsLoading, error: firmsError } = useQuery({
     queryKey: ["/api/firms"],
   });
 
@@ -52,6 +52,32 @@ export default function Dashboard() {
             <div key={i} className="h-32 bg-gray-200 animate-pulse rounded-lg" />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // Handle error states
+  if (statsError || changesError || firmsError) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-red-600 mb-2">Connection Error</h2>
+              <p className="text-gray-600 mb-4">
+                Unable to load dashboard data. The database connection may be down.
+              </p>
+              <div className="space-y-2 text-sm text-gray-500">
+                {statsError && <p>Stats error: {statsError instanceof Error ? statsError.message : 'Unknown'}</p>}
+                {changesError && <p>Changes error: {changesError instanceof Error ? changesError.message : 'Unknown'}</p>}
+                {firmsError && <p>Firms error: {firmsError instanceof Error ? firmsError.message : 'Unknown'}</p>}
+              </div>
+              <p className="text-sm text-blue-600 mt-4">
+                Try: <a href="/api/debug" target="_blank" className="underline">Check API Debug Info</a>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

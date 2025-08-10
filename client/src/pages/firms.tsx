@@ -24,7 +24,7 @@ export default function Firms() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: firms, isLoading } = useQuery({
+  const { data: firms, isLoading, error } = useQuery({
     queryKey: ["/api/firms"],
   });
 
@@ -124,6 +124,27 @@ export default function Firms() {
     const newStatus = firm.status === "active" ? "paused" : "active";
     updateFirmMutation.mutate({ id: firm.id, data: { status: newStatus } });
   };
+
+  // Handle error state
+  if (error) {
+    return (
+      <div className="p-8">
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center">
+              <h2 className="text-xl font-semibold text-red-600 mb-2">Connection Error</h2>
+              <p className="text-gray-600 mb-4">
+                Unable to load firms data. Please check if the database is connected.
+              </p>
+              <p className="text-sm text-gray-500">
+                Error: {error instanceof Error ? error.message : 'Unknown error'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const filteredFirms = (firms as any[] || []).filter((firm: any) => {
     const matchesSearch = firm.name.toLowerCase().includes(searchQuery.toLowerCase());
