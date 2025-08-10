@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Building, Plus, Search, Eye, Edit, Pause, Play, Trash2 } from "lucide-react";
+import { Building, Plus, Search, Eye, Edit, Pause, Play, Trash2, Zap, Users } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { insertFirmSchema, type InsertFirm } from "@shared/schema";
@@ -103,14 +103,56 @@ export default function Firms() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/firms"] });
       toast({
-        title: "Scrape Completed",
+        title: "Basic Scrape Completed",
         description: `Found ${data.membersFound} members, ${data.changesDetected} changes detected.`,
       });
     },
     onError: () => {
       toast({
-        title: "Scrape Failed",
+        title: "Basic Scrape Failed",
         description: "Failed to scrape firm. Please check the configuration.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const enhancedScrapeMutation = useMutation({
+    mutationFn: (firmId: string) => 
+      fetch(`/api/scrape-firm-enhanced?firmId=${firmId}`, { method: 'POST' })
+        .then(res => res.json()),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/firms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/team-members"] });
+      toast({
+        title: "Enhanced Scrape Completed",
+        description: `Found ${data.results?.totalMembers || 0} members, ${data.results?.changesDetected || 0} changes detected. Method: ${data.results?.nameScrapingMethod || 'unknown'}`,
+        duration: 6000,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Enhanced Scrape Failed", 
+        description: error.message || "Failed to perform enhanced scraping.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const quickNameScrapeMutation = useMutation({
+    mutationFn: (teamPageUrl: string) =>
+      fetch(`/api/scrape-names?url=${encodeURIComponent(teamPageUrl)}`)
+        .then(res => res.json()),
+    onSuccess: (data: any) => {
+      toast({
+        title: "Name Scraping Completed",
+        description: `Found ${data.membersFound || 0} team members using ${data.method || 'unknown'} method.`,
+        duration: 4000,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Name Scraping Failed",
+        description: "Failed to scrape team member names.",
         variant: "destructive",
       });
     },
@@ -346,29 +388,61 @@ export default function Firms() {
                         </Badge>
                       </td>
                       <td className="py-4">
-                        <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-1">
+                          {/* Enhanced Scrape - Primary action */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => enhancedScrapeMutation.mutate(firm.id)}
+                            disabled={enhancedScrapeMutation.isPending || !firm.teamPageUrl}
+                            className="text-blue-600 hover:text-blue-800"
+                            title="Enhanced scrape with pagination & enrichment"
+                          >
+                            <Zap className="w-4 h-4" />
+                          </Button>
+                          
+                          {/* Quick Name Scrape */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => quickNameScrapeMutation.mutate(firm.teamPageUrl)}
+                            disabled={quickNameScrapeMutation.isPending || !firm.teamPageUrl}
+                            className="text-green-600 hover:text-green-800"
+                            title="Quick name scraping only"
+                          >
+                            <Users className="w-4 h-4" />
+                          </Button>
+                          
+                          {/* Basic Scrape - Legacy */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => scrapeFirmMutation.mutate(firm.id)}
                             disabled={scrapeFirmMutation.isPending}
-                            className="text-primary hover:text-primary-dark"
+                            className="text-gray-400 hover:text-gray-600"
+                            title="Basic scrape (legacy)"
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
+                          
+                          {/* Edit */}
                           <Button
                             variant="ghost"
                             size="sm"
                             className="text-gray-400 hover:text-gray-600"
+                            title="Edit firm"
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
+                          
+                          {/* Pause/Resume */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => toggleFirmStatus(firm)}
                             disabled={updateFirmMutation.isPending}
                             className="text-gray-400 hover:text-gray-600"
+                            title={firm.status === "active" ? "Pause monitoring" : "Resume monitoring"}
                           >
                             {firm.status === "active" ? (
                               <Pause className="w-4 h-4" />
@@ -376,12 +450,15 @@ export default function Firms() {
                               <Play className="w-4 h-4" />
                             )}
                           </Button>
+                          
+                          {/* Delete */}
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => deleteFirmMutation.mutate(firm.id)}
                             disabled={deleteFirmMutation.isPending}
                             className="text-gray-400 hover:text-red-600"
+                            title="Delete firm"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
