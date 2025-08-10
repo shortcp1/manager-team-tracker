@@ -13,27 +13,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export interface ScrapedMember {
   name: string;
   title?: string;
-  bio?: string;
-  focusAreas?: string[];
   imageUrl?: string;
   profileUrl?: string;
-  // Enrichment fields
-  linkedinUrl?: string;
-  email?: string;
-  phone?: string;
-  location?: string;
-  officeCountry?: string;
-  department?: string;
-  seniorityLevel?: string;
-  normalizedTitle?: string;
-  normalizedName?: string;
-  entityKey?: string;
-  twitterUrl?: string;
-  githubUrl?: string;
-  personalWebsite?: string;
-  orderIndex?: number;
-  category?: string;
-  profilePhotoHash?: string;
 }
 
 export class WebScraper {
@@ -137,184 +118,7 @@ export class WebScraper {
     }
   }
 
-  private async detectAndHandlePagination(page: Page): Promise<ScrapedMember[]> {
-    const allMembers: ScrapedMember[] = [];
-    let pageNumber = 1;
-    const maxPages = 10; // Safety limit
-
-    do {
-      console.log(`Scraping page ${pageNumber}...`);
-      
-      // Parse current page
-      const html = await page.content();
-      const currentPageMembers = await this.parseTeamPage(html, page.url());
-      allMembers.push(...currentPageMembers);
-
-      // Look for pagination - try multiple common patterns
-      const nextButton = await this.findNextButton(page);
-      if (!nextButton) break;
-
-      console.log(`Found next button, navigating to page ${pageNumber + 1}...`);
-      await nextButton.click();
-      await page.waitForLoadState('networkidle', { timeout: 10000 });
-      pageNumber++;
-
-    } while (pageNumber <= maxPages);
-
-    return this.deduplicateMembers(allMembers);
-  }
-
-  private async findNextButton(page: Page) {
-    // Common pagination selectors in order of preference
-    const nextSelectors = [
-      // Text-based (most reliable)
-      'button:has-text("Next")',
-      'a:has-text("Next")',
-      'button:has-text("Load More")',
-      'a:has-text("Load More")',
-      'button:has-text("Show More")',
-      'a:has-text("Show More")',
-      
-      // Class/attribute-based
-      '.pagination .next:not(.disabled)',
-      '.pagination-next:not(.disabled)',
-      'button[aria-label*="next"]:not([disabled])',
-      'a[aria-label*="next"]',
-      
-      // Icon-based (arrows, etc)
-      'button:has(.icon-arrow-right):not([disabled])',
-      'a:has(.icon-arrow-right)',
-      'button:has([data-icon="arrow-right"]):not([disabled])',
-      
-      // Generic patterns
-      '.page-numbers .next',
-      '.pager .next:not(.disabled)',
-    ];
-
-    for (const selector of nextSelectors) {
-      try {
-        const element = page.locator(selector).first();
-        if (await element.isVisible({ timeout: 1000 })) {
-          return element;
-        }
-      } catch {
-        // Continue to next selector
-      }
-    }
-
-    return null;
-  }
-
-  private async detectAndHandleStageFilters(page: Page): Promise<ScrapedMember[]> {
-    const allMembers: ScrapedMember[] = [];
-    
-    // Detect stage/role filters
-    const stageFilters = await this.detectStageFilters(page);
-    
-    if (stageFilters.length === 0) {
-      // No filters detected, scrape normally
-      return this.detectAndHandlePagination(page);
-    }
-
-    console.log(`Detected ${stageFilters.length} stage filters:`, stageFilters.map(f => f.name));
-
-    // Scrape each stage
-    for (const filter of stageFilters) {
-      try {
-        console.log(`Scraping stage: ${filter.name}...`);
-        
-        await filter.element.click();
-        await page.waitForLoadState('networkidle', { timeout: 10000 });
-        
-        // Handle pagination within this stage
-        const stageMembers = await this.detectAndHandlePagination(page);
-        
-        // Tag members with their stage
-        stageMembers.forEach(member => {
-          member.category = filter.name;
-        });
-        
-        allMembers.push(...stageMembers);
-        
-      } catch (error) {
-        console.warn(`Error scraping stage ${filter.name}:`, error);
-      }
-    }
-
-    return this.deduplicateMembers(allMembers);
-  }
-
-  private async detectStageFilters(page: Page): Promise<{name: string, element: any}[]> {
-    const filters: {name: string, element: any}[] = [];
-    
-    // Common filter patterns
-    const filterPatterns = [
-      // FacetWP (like Sequoia)
-      '.facetwp-radio:not(.checked)',
-      
-      // Tab-based filters
-      '[role="tab"]:has-text(i)',
-      'button[data-filter]',
-      'a[data-filter]',
-      
-      // Dropdown filters
-      'select[name*="stage"] option',
-      'select[name*="role"] option',
-      'select[name*="category"] option',
-      
-      // Button-based filters
-      'button:has-text("Growth")',
-      'button:has-text("Seed")',
-      'button:has-text("Early")',
-      'button:has-text("Partner")',
-      'button:has-text("Principal")',
-      'button:has-text("Associate")',
-    ];
-
-    for (const pattern of filterPatterns) {
-      try {
-        const elements = await page.locator(pattern).all();
-        
-        for (const element of elements) {
-          try {
-            const text = await element.textContent();
-            if (text && text.trim().length > 0) {
-              // Filter out generic words
-              const normalizedText = text.trim().toLowerCase();
-              if (this.isRelevantStageFilter(normalizedText)) {
-                filters.push({
-                  name: text.trim(),
-                  element: element
-                });
-              }
-            }
-          } catch {
-            // Skip elements that can't be read
-          }
-        }
-        
-        // If we found filters with this pattern, use them
-        if (filters.length > 0) break;
-        
-      } catch {
-        // Continue to next pattern
-      }
-    }
-
-    return filters;
-  }
-
-  private isRelevantStageFilter(text: string): boolean {
-    const relevantTerms = [
-      'seed', 'early', 'growth', 'late', 'venture',
-      'partner', 'principal', 'associate', 'analyst', 'director',
-      'investment', 'operating', 'operator', 'advisory',
-      'series a', 'series b', 'series c'
-    ];
-    
-    return relevantTerms.some(term => text.includes(term)) && 
-           !['all', 'any', 'filter', 'select', 'choose'].includes(text);
-  }
+  // Removed complex pagination and stage detection for serverless compatibility
 
   private buildArtifactPaths(firm: Firm) {
     const ts = new Date();
@@ -382,10 +186,9 @@ export class WebScraper {
         await this.clickLoadMore(page);
         await this.infiniteScroll(page);
 
-        // Now try new intelligent stage/pagination detection
-        const members = await this.detectAndHandleStageFilters(page);
-        
+        // Simplified scraping - no stage/pagination detection
         const html = await page.content();
+        const members = await this.parseTeamPage(html, firm.url);
         const screenshot = await page.screenshot({ fullPage: true }) as Buffer;
 
         await page.close();
@@ -554,9 +357,9 @@ export class WebScraper {
     return results;
   }
 
-  private extractMemberInfo($: cheerio.CheerioAPI, element: any, baseUrl: string, orderIndex?: number): ScrapedMember | null {
+  private extractMemberInfo($: cheerio.CheerioAPI, element: any, baseUrl: string): ScrapedMember | null {
     try {
-      // Try to extract name
+      // Extract name (essential)
       const nameSelectors = ['h1', 'h2', 'h3', 'h4', '.name', '.ink__title', '[class*="name"]', 'strong', 'b'];
       let name = '';
       
@@ -570,7 +373,7 @@ export class WebScraper {
 
       if (!name) return null;
 
-      // Extract title
+      // Extract title (nice to have)
       const titleSelectors = ['.title', '.position', '.role', '[class*="title"]', '[class*="position"]'];
       let title = '';
       
@@ -582,19 +385,7 @@ export class WebScraper {
         }
       }
 
-      // Extract bio
-      const bioSelectors = ['.bio', '.description', 'p', '[class*="bio"]', '[class*="description"]'];
-      let bio = '';
-      
-      for (const bioSelector of bioSelectors) {
-        const bioEl = element.find(bioSelector).first();
-        if (bioEl.length && bioEl.text().trim() && bioEl.text().trim() !== name && bioEl.text().trim() !== title) {
-          bio = bioEl.text().trim();
-          break;
-        }
-      }
-
-      // Extract image URL
+      // Extract image URL (nice to have)
       const imgEl = element.find('img').first();
       let imageUrl = '';
       if (imgEl.length) {
@@ -604,7 +395,7 @@ export class WebScraper {
         }
       }
 
-      // Extract primary link
+      // Extract primary link (nice to have)
       const linkEl = element.find('a').first();
       let profileUrl = '';
       if (linkEl.length) {
@@ -614,53 +405,11 @@ export class WebScraper {
         }
       }
 
-      // Social links + email + other URLs within the element
-      let linkedinUrl: string | undefined;
-      let twitterUrl: string | undefined;
-      let githubUrl: string | undefined;
-      let personalWebsite: string | undefined;
-      let email: string | undefined;
-
-      element.find('a').each((_: number, aEl: any) => {
-        const href = $(aEl).attr('href');
-        if (!href) return;
-        const abs = href.startsWith('http') ? href : new URL(href, baseUrl).href;
-        if (abs.includes('linkedin.com')) linkedinUrl = abs;
-        else if (abs.includes('twitter.com') || abs.includes('x.com')) twitterUrl = abs;
-        else if (abs.includes('github.com')) githubUrl = abs;
-        else if (href.startsWith('mailto:')) email = href.replace('mailto:', '').trim();
-        else if (!personalWebsite && /^https?:\/\//.test(abs)) personalWebsite = abs;
-      });
-
-      // Location / department heuristics
-      let location = '';
-      const locEl = element.find('.location, .office, [data-field="location"]').first();
-      if (locEl.length) location = locEl.text().trim();
-
-      // Derive seniority level from title
-      const seniorityLevel = this.deriveSeniority(title);
-
-      const normalizedName = this.normalizeName(name);
-      const normalizedTitle = title ? this.normalizeTitle(title) : undefined;
-      const entityKey = this.computeEntityKey({ name, linkedinUrl, email });
-
       return {
         name,
         title: title || undefined,
-        bio: bio || undefined,
         imageUrl: imageUrl || undefined,
         profileUrl: profileUrl || undefined,
-        linkedinUrl,
-        twitterUrl,
-        githubUrl,
-        personalWebsite,
-        email,
-        location: location || undefined,
-        seniorityLevel,
-        normalizedName,
-        normalizedTitle,
-        entityKey,
-        orderIndex,
       };
     } catch (error) {
       console.warn('Error extracting member info:', error);
@@ -703,7 +452,7 @@ export class WebScraper {
   private deduplicateMembers(members: ScrapedMember[]): ScrapedMember[] {
     const seen = new Set<string>();
     return members.filter(member => {
-      const key = (member.entityKey || member.normalizedName || member.name.toLowerCase().replace(/\s+/g, ' '));
+      const key = member.name.toLowerCase().replace(/\s+/g, ' ');
       if (seen.has(key)) {
         return false;
       }
@@ -712,173 +461,32 @@ export class WebScraper {
     });
   }
 
-  private normalizeName(name: string): string {
-    return name
-      .trim()
-      .replace(/\s+/g, ' ')
-      .replace(/[.,]/g, '')
-      .toLowerCase();
-  }
-
-  private normalizeTitle(title: string): string {
-    return title.trim().replace(/\s+/g, ' ');
-  }
-
-  private computeEntityKey({ name, linkedinUrl, email }: { name: string; linkedinUrl?: string; email?: string; }): string {
-    const normalizedName = this.normalizeName(name);
-    if (linkedinUrl) return `li:${linkedinUrl}`;
-    if (email) return `em:${email.toLowerCase()}`;
-    return `nm:${normalizedName}`;
-  }
-
-  private deriveSeniority(title?: string): string | undefined {
-    if (!title) return undefined;
-    const t = title.toLowerCase();
-    if (/(managing|general) partner|gp/.test(t)) return 'partner';
-    if (/partner/.test(t)) return 'partner';
-    if (/(managing director|md)/.test(t)) return 'managing_director';
-    if (/(principal)/.test(t)) return 'principal';
-    if (/(vice president|vp)/.test(t)) return 'vice_president';
-    if (/(associate)/.test(t)) return 'associate';
-    if (/(analyst)/.test(t)) return 'analyst';
-    return undefined;
-  }
-
-  async detectChanges(firmId: string, scrapedMembers: ScrapedMember[]): Promise<number> {
-    const currentMembers = await storage.getActiveTeamMembersByFirm(firmId);
-    const currentMemberMap = new Map(
-      currentMembers.map(m => [ (m.entityKey || m.name.toLowerCase()), m ])
-    );
-    const scrapedMemberMap = new Map(
-      scrapedMembers.map(m => [ (m.entityKey || (m.normalizedName || m.name.toLowerCase())), m ])
-    );
+  async saveMembers(firmId: string, scrapedMembers: ScrapedMember[]): Promise<number> {
+    // Simplified: just replace all members for this firm
+    // Remove complex change tracking for serverless compatibility
     
-    let changesDetected = 0;
-
-    // Detect removed members
-    for (const currentMember of currentMembers) {
-      const key = currentMember.entityKey || currentMember.name.toLowerCase();
-      if (!scrapedMemberMap.has(key)) {
-        await storage.deactivateTeamMember(currentMember.id);
-        await storage.createChangeHistory({
+    // Clear existing members
+    await storage.deactivateAllTeamMembers(firmId);
+    
+    // Add new members
+    let savedCount = 0;
+    for (const member of scrapedMembers) {
+      try {
+        await storage.createTeamMember({
           firmId,
-          memberId: currentMember.id,
-          changeType: 'removed',
-          memberName: currentMember.name,
-          memberTitle: currentMember.title,
-          previousData: {
-            name: currentMember.name,
-            title: currentMember.title,
-            bio: currentMember.bio,
-            location: (currentMember as any).location,
-          },
-          newData: null,
-        });
-        changesDetected++;
-      }
-    }
-
-    // Detect added or updated members
-    for (const scrapedMember of scrapedMembers) {
-      const key = scrapedMember.entityKey || (scrapedMember.normalizedName || scrapedMember.name.toLowerCase());
-      const existingMember = currentMemberMap.get(key);
-      
-      if (!existingMember) {
-        // New member
-        const newMember: InsertTeamMember = {
-          firmId,
-          name: scrapedMember.name,
-          title: scrapedMember.title,
-          bio: scrapedMember.bio,
-          focusAreas: scrapedMember.focusAreas,
-          imageUrl: scrapedMember.imageUrl,
-          profileUrl: scrapedMember.profileUrl,
+          name: member.name,
+          title: member.title,
+          imageUrl: member.imageUrl,
+          profileUrl: member.profileUrl,
           isActive: true,
-          // enrichment
-          linkedinUrl: scrapedMember.linkedinUrl,
-          email: scrapedMember.email,
-          phone: scrapedMember.phone,
-          location: scrapedMember.location,
-          officeCountry: scrapedMember.officeCountry,
-          department: scrapedMember.department,
-          seniorityLevel: scrapedMember.seniorityLevel,
-          normalizedTitle: scrapedMember.normalizedTitle,
-          normalizedName: scrapedMember.normalizedName,
-          entityKey: key,
-          twitterUrl: scrapedMember.twitterUrl,
-          githubUrl: scrapedMember.githubUrl,
-          personalWebsite: scrapedMember.personalWebsite,
-          orderIndex: scrapedMember.orderIndex,
-          category: scrapedMember.category,
-          profilePhotoHash: scrapedMember.profilePhotoHash,
-        } as InsertTeamMember;
-        
-        const createdMember = await storage.createTeamMember(newMember);
-        await storage.createChangeHistory({
-          firmId,
-          memberId: createdMember.id,
-          changeType: 'added',
-          memberName: scrapedMember.name,
-          memberTitle: scrapedMember.title,
-          previousData: null,
-          newData: {
-            name: scrapedMember.name,
-            title: scrapedMember.title,
-            bio: scrapedMember.bio,
-            location: scrapedMember.location,
-          },
-        });
-        changesDetected++;
-      } else {
-        // Check for updates
-        const hasChanges = 
-          (existingMember.title !== scrapedMember.title) ||
-          (existingMember.bio !== scrapedMember.bio) ||
-          (existingMember.imageUrl !== scrapedMember.imageUrl) ||
-          ((existingMember as any).location !== scrapedMember.location) ||
-          ((existingMember as any).seniorityLevel !== scrapedMember.seniorityLevel);
-        
-        if (hasChanges) {
-          const previousData = {
-            name: existingMember.name,
-            title: existingMember.title,
-            bio: existingMember.bio,
-            location: (existingMember as any).location,
-          };
-          
-          await storage.updateTeamMember(existingMember.id, {
-            title: scrapedMember.title,
-            bio: scrapedMember.bio,
-            focusAreas: scrapedMember.focusAreas,
-            imageUrl: scrapedMember.imageUrl,
-            profileUrl: scrapedMember.profileUrl,
-            location: scrapedMember.location,
-            seniorityLevel: scrapedMember.seniorityLevel,
-            normalizedTitle: scrapedMember.normalizedTitle,
-            normalizedName: scrapedMember.normalizedName,
-            entityKey: scrapedMember.entityKey || existingMember.entityKey,
-          } as Partial<TeamMember>);
-
-          await storage.createChangeHistory({
-            firmId,
-            memberId: existingMember.id,
-            changeType: 'updated',
-            memberName: existingMember.name,
-            memberTitle: scrapedMember.title || existingMember.title,
-            previousData,
-            newData: {
-              name: existingMember.name,
-              title: scrapedMember.title,
-              bio: scrapedMember.bio,
-              location: scrapedMember.location,
-            },
-          });
-          changesDetected++;
-        }
+        } as any);
+        savedCount++;
+      } catch (error) {
+        console.warn(`Failed to save member ${member.name}:`, error);
       }
     }
-
-    return changesDetected;
+    
+    return savedCount;
   }
 }
 

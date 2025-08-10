@@ -219,11 +219,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(500).json({ message: result.error });
       }
 
-      const changesDetected = await webScraper.detectChanges(firm.id, result.members);
+      const savedCount = await webScraper.saveMembers(firm.id, result.members);
       
       res.json({
         membersFound: result.members.length,
-        changesDetected,
+        savedCount,
         message: `Successfully scraped ${firm.name}`,
       });
     } catch (error) {
@@ -256,9 +256,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const result = await webScraper.scrapeFirm(firm);
           
           if (!result.error) {
-            const changesDetected = await webScraper.detectChanges(firm.id, result.members);
+            const savedCount = await webScraper.saveMembers(firm.id, result.members);
             totalMembersFound += result.members.length;
-            totalChangesDetected += changesDetected;
+            totalChangesDetected += savedCount;
             firmsProcessed++;
           }
         } catch (error) {

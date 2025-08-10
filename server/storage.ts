@@ -29,6 +29,7 @@ export interface IStorage {
   deleteTeamMember(id: string): Promise<void>;
   getActiveTeamMembersByFirm(firmId: string): Promise<TeamMember[]>;
   deactivateTeamMember(id: string): Promise<void>;
+  deactivateAllTeamMembers(firmId: string): Promise<void>;
 
   // Change history methods
   getChangeHistory(limit?: number, offset?: number): Promise<ChangeHistory[]>;
@@ -146,6 +147,13 @@ export class DatabaseStorage implements IStorage {
       .update(teamMembers)
       .set({ isActive: false, updatedAt: sql`now()` })
       .where(eq(teamMembers.id, id));
+  }
+
+  async deactivateAllTeamMembers(firmId: string): Promise<void> {
+    await db
+      .update(teamMembers)
+      .set({ isActive: false, updatedAt: sql`now()` })
+      .where(eq(teamMembers.firmId, firmId));
   }
 
   async getChangeHistory(limit = 50, offset = 0): Promise<ChangeHistory[]> {
