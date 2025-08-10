@@ -1,8 +1,21 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { webScraper } from "./services/scraper";
-import { schedulerService } from "./services/scheduler";
+// Import these conditionally to avoid serverless issues
+let webScraper: any;
+let schedulerService: any;
+
+async function getServices() {
+  if (!webScraper) {
+    const scraperModule = await import("./services/scraper");
+    webScraper = scraperModule.webScraper;
+  }
+  if (!schedulerService && !process.env.VERCEL) {
+    const schedulerModule = await import("./services/scheduler");
+    schedulerService = schedulerModule.schedulerService;
+  }
+  return { webScraper, schedulerService };
+}
 import { insertFirmSchema, insertEmailSettingsSchema, type Firm } from "@shared/schema";
 import { z } from "zod";
 
@@ -179,6 +192,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Scraping endpoints
   app.post("/api/scrape/run", async (req, res) => {
     try {
+      const { schedulerService } = await getServices();
+      if (!schedulerService) {
+        return res.status(501).json({ message: "Scheduled scraping not available in serverless environment" });
+      }
       // Run scraping job manually
       schedulerService.runScrapingJob();
       res.json({ message: "Scraping job started" });
@@ -195,6 +212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Firm not found" });
       }
 
+      const { webScraper } = await getServices();
       const result = await webScraper.scrapeFirm(firm);
       
       if (result.error) {
@@ -234,6 +252,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       for (const firm of activeFirms) {
         try {
+          const { webScraper } = await getServices();
           const result = await webScraper.scrapeFirm(firm);
           
           if (!result.error) {
@@ -330,8 +349,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Start the scheduler
-  schedulerService.start();
+  // Start the scheduler (only in non-serverless environments)
+  if (!process.env.VERCEL && schedulerService) {
+    schedulerService.start();
+  }
 
   const httpServer = createServer(app);
   return httpServer;
