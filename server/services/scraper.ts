@@ -242,11 +242,11 @@ export class WebScraper {
       const html = await response.text();
       const members = await this.parseTeamPage(html, firm.url);
       
-      if (members.length >= 5) {
+      if (members.length >= 50) {
         console.log(`Successfully scraped ${firm.name} via HTTP - found ${members.length} members`);
         return { members, html };
       } else {
-        console.log(`HTTP scrape for ${firm.name} returned ${members.length} members; trying Playwright fallback...`);
+        console.log(`HTTP scrape for ${firm.name} returned ${members.length} members; trying Playwright fallback for enhanced tab detection...`);
         throw new Error('HTTP result insufficient');
       }
       
