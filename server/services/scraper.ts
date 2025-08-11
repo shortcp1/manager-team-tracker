@@ -226,65 +226,37 @@ export class WebScraper {
     const startTime = Date.now();
     
     try {
-      console.log(`Scraping ${firm.name} at ${firm.teamPageUrl}`);
+      console.log(`Scraping ${firm.name} at ${firm.teamPageUrl} using Playwright`);
       
-      // Try with simple HTTP request first (faster and more reliable)
-      const response = await fetch(firm.teamPageUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        },
+      await this.initialize();
+      
+      const page = await this.context!.newPage();
+      await this.preparePage(page);
+      
+      await page.goto(firm.teamPageUrl, { 
+        waitUntil: 'networkidle',
+        timeout: 45000 
       });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const html = await response.text();
+
+      // Enhanced dynamic content loading
+      await this.delay(500);
+      await this.clickAllTabs(page);
+      await this.handleDynamicFilters(page);
+      await this.clickLoadMore(page);
+      await this.infiniteScroll(page);
+
+      // Simplified scraping - no stage/pagination detection
+      const html = await page.content();
       const members = await this.parseTeamPage(html, firm.url);
-      
-      if (members.length >= 50) {
-        console.log(`Successfully scraped ${firm.name} via HTTP - found ${members.length} members`);
-        return { members, html };
-      } else {
-        console.log(`HTTP scrape for ${firm.name} returned ${members.length} members; trying Playwright fallback for enhanced tab detection...`);
-        throw new Error('HTTP result insufficient');
-      }
-      
-    } catch (httpError) {
-      console.log(`HTTP scraping failed for ${firm.name}, trying Playwright...`);
-      
-      // Fallback to Playwright for JavaScript-heavy sites
-      try {
-        await this.initialize();
-        
-        const page = await this.context!.newPage();
-        await this.preparePage(page);
-        
-        await page.goto(firm.teamPageUrl, { 
-          waitUntil: 'networkidle',
-          timeout: 45000 
-        });
+      const screenshot = await page.screenshot({ fullPage: true }) as Buffer;
 
-        // Enhanced dynamic content loading
-        await this.delay(500);
-        await this.clickAllTabs(page);
-        await this.handleDynamicFilters(page);
-        await this.clickLoadMore(page);
-        await this.infiniteScroll(page);
-
-        // Simplified scraping - no stage/pagination detection
-        const html = await page.content();
-        const members = await this.parseTeamPage(html, firm.url);
-        const screenshot = await page.screenshot({ fullPage: true }) as Buffer;
-
-        await page.close();
-        
-        console.log(`Successfully scraped ${firm.name} using Playwright - found ${members.length} members`);
-        return { members, html, screenshot };
-      } catch (playwrightError) {
-        console.error(`Both HTTP and Playwright scraping failed for ${firm.name}:`, playwrightError);
-        throw playwrightError;
-      }
+      await page.close();
+      
+      console.log(`Successfully scraped ${firm.name} using Playwright - found ${members.length} members`);
+      return { members, html, screenshot };
+    } catch (playwrightError) {
+      console.error(`Playwright scraping failed for ${firm.name}:`, playwrightError);
+      throw playwrightError;
     }
   }
 
