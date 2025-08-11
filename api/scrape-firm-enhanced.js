@@ -139,48 +139,39 @@ export default async function handler(req, res) {
 
 async function scrapeNames(teamPageUrl) {
   try {
-    // Import the name scraper dynamically
-    const nameScraperModule = await import('./scrape-names.js');
-    const nameScraperHandler = nameScraperModule.default;
+    // Use internal HTTP call to our server's scraper route
+    const serverUrl = process.env.SERVER_URL || 'http://localhost:3000';
+    const response = await fetch(`${serverUrl}/api/scrape-names?url=${encodeURIComponent(teamPageUrl)}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Internal-Enhanced-Scraper/1.0'
+      },
+      timeout: 120000 // 2 minute timeout
+    });
 
-    // Create mock request/response objects
-    const mockReq = {
-      query: { url: teamPageUrl }
-    };
-
-    let result = null;
-    const mockRes = {
-      status: (code) => ({
-        json: (data) => {
-          result = { statusCode: code, data };
-          return mockRes;
-        }
-      })
-    };
-
-    // Call the name scraper
-    await nameScraperHandler(mockReq, mockRes);
-
-    if (result.statusCode === 200) {
+    if (response.ok) {
+      const data = await response.json();
       return {
         success: true,
-        members: result.data.members,
-        method: result.data.method,
+        members: data.names || data.members || [],
+        method: 'playwright-server',
         metadata: {
-          stagesActivated: result.data.stagesActivated,
-          pagesProcessed: result.data.pagesProcessed
+          stagesActivated: data.stagesActivated || 0,
+          pagesProcessed: data.pagesProcessed || 0
         }
       };
     } else {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
       return {
         success: false,
-        error: result.data.message || 'Name scraping failed',
+        error: errorData.error || 'Server scraping failed',
         members: []
       };
     }
 
   } catch (error) {
-    console.error('Name scraping error:', error);
+    console.error('Server scraping error:', error);
     return {
       success: false,
       error: error.message,

@@ -1,4 +1,4 @@
-// Enhanced name scraper with pagination and stage detection
+// Enhanced Playwright-only name scraper with pagination and stage detection
 import { chromium } from 'playwright';
 
 export default async function handler(req, res) {
@@ -6,47 +6,11 @@ export default async function handler(req, res) {
   
   try {
     const testUrl = req.query.url || 'https://www.sequoiacap.com/our-team/';
-    const usePlaywright = req.query.playwright === 'true';
     
-    console.log(`Enhanced scraping ${testUrl} with ${usePlaywright ? 'Playwright' : 'HTTP'}`);
+    console.log(`Enhanced Playwright scraping ${testUrl}`);
 
     let members = [];
-    let method = 'http';
-
-    // Try HTTP-first approach
-    if (!usePlaywright) {
-      try {
-        const response = await fetch(testUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-        });
-        
-        if (response.ok) {
-          const html = await response.text();
-          members = await parseTeamPage(html, testUrl);
-          
-          if (members.length >= 5) {
-            console.log(`HTTP scraping successful: found ${members.length} members`);
-            return res.status(200).json({
-              message: 'Enhanced name scraping successful',
-              method: 'http',
-              url: testUrl,
-              membersFound: members.length,
-              members: members,
-              timestamp: new Date().toISOString()
-            });
-          } else {
-            console.log(`HTTP result insufficient (${members.length} members), trying Playwright`);
-          }
-        }
-      } catch (httpError) {
-        console.log('HTTP scraping failed, falling back to Playwright:', httpError.message);
-      }
-    }
-
-    // Fallback to Playwright with enhanced features
-    method = 'playwright';
+    const method = 'playwright';
     console.log('Starting Playwright enhanced scraping...');
     
     browser = await chromium.launch({
@@ -96,7 +60,7 @@ export default async function handler(req, res) {
     members = await parseTeamPage(html, testUrl);
     
     res.status(200).json({
-      message: 'Enhanced name scraping successful',
+      message: 'Enhanced Playwright name scraping successful',
       method: method,
       url: testUrl,
       stagesActivated: stagesActivated,
@@ -107,9 +71,9 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Enhanced scraping failed:', error);
+    console.error('Enhanced Playwright scraping failed:', error);
     res.status(500).json({
-      error: 'Enhanced scraping failed',
+      error: 'Enhanced Playwright scraping failed',
       message: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString()
     });
