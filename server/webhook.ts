@@ -16,7 +16,7 @@ export async function handleDeployWebhook(req: Request, res: Response) {
       'git fetch origin main',
       'git reset --hard origin/main',
       'npm ci',
-      'npm run build',
+      'PATH=$PATH:./node_modules/.bin npm run build',
       'pm2 restart mt-server --update-env'
     ];
     
