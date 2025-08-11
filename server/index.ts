@@ -36,6 +36,42 @@ app.use((req, res, next) => {
   next();
 });
 
+// Playwright scraper route
+app.get('/api/scrape-names', async (req, res) => {
+  try {
+    const { chromium } = await import('playwright');
+    const url = (req.query.url as string) || 'https://www.sequoiacap.com/our-team/';
+    const selectorParam = (req.query.selector as string) || '';
+    const defaults = [
+      '[class*="member"] h3, [class*="member"] .name',
+      '[class*="person"] h3, [class*="person"] .name',
+      '[class*="team"] a, [class*="people"] a',
+      '.team-member, .member-card, .person-card, .profile .name, .bio-card .name'
+    ];
+    const selectors = selectorParam ? [selectorParam] : defaults;
+
+    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+    const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      try { await page.click('text=/^(accept|agree|allow|got it|ok|accept all)$/i', { timeout: 2000 }); } catch {}
+      await page.evaluate(async () => { await new Promise<void>(r => { let t=0,d=350,i=setInterval(()=>{window.scrollBy(0,d);t+=d;if(t>=1400||(innerHeight+scrollY)>=document.documentElement.scrollHeight){clearInterval(i);r();}},120); }); });
+      let names: string[] = [];
+      for (const sel of selectors) {
+        const any = await page.$(sel);
+        if (!any) continue;
+        const found = await page.$$eval(sel, els => els.map(el => (el as HTMLElement).innerText?.trim()).filter(Boolean));
+        names.push(...found);
+      }
+      names = names.flatMap(t=>t.split('\n')).map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean)
+                   .filter(s=>/^[A-Z][a-z]+(?: [A-Z][a-z'.-]+)+$/.test(s))
+                   .filter((v,i,a)=>a.indexOf(v)===i).slice(0,200);
+
+      res.status(200).json({ message:'Playwright scrape OK', url, selector: selectorParam || '(defaults)', count: names.length, names, timestamp: new Date().toISOString() });
+    } finally { await browser.close(); }
+  } catch (err:any) { res.status(500).json({ error:'Scrape failed', details: err?.message || String(err) }); }
+});
+
 (async () => {
   const server = await registerRoutes(app);
 
