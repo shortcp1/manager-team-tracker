@@ -15,8 +15,8 @@ export async function handleDeployWebhook(req: Request, res: Response) {
       'cd /home/mtuser/manager-team-tracker',
       'git fetch origin main',
       'git reset --hard origin/main',
-      'npm ci',
-      'npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist',
+      'npm install',
+      'npm run build',
       'pm2 restart mt-server --update-env'
     ];
     
