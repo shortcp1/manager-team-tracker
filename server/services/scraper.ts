@@ -183,19 +183,43 @@ export class WebScraper {
             try {
               const isVisible = await elements[i].isVisible();
               if (isVisible) {
-                await pattern.trigger(elements[i]);
-                console.log(`Triggered dynamic filter ${i + 1}/${elements.length}`);
+                // Get current member count before clicking
+                const beforeCount = await page.locator('.grid__instance, .team-member, .member, .person').count();
+                console.log(`Before clicking filter ${i + 1}: ${beforeCount} members visible`);
                 
-                // Wait for AJAX content to load
-                await page.waitForFunction(() => {
-                  return document.readyState === 'complete';
-                }, { timeout: 5000 });
-                await this.delay(800); // Extra time for AJAX
+                await pattern.trigger(elements[i]);
+                
+                // Wait for content to actually change with verification
+                let contentChanged = false;
+                for (let attempt = 0; attempt < 5; attempt++) {
+                  await this.delay(1000); // Wait 1 second between checks
+                  const afterCount = await page.locator('.grid__instance, .team-member, .member, .person').count();
+                  
+                  if (afterCount !== beforeCount) {
+                    console.log(`Filter ${i + 1} loaded: ${afterCount} members (was ${beforeCount})`);
+                    contentChanged = true;
+                    break;
+                  }
+                  
+                  // Wait for any pending network requests
+                  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+                }
+                
+                if (!contentChanged) {
+                  console.log(`Warning: Filter ${i + 1} may not have loaded new content`);
+                }
+                
+                // Additional settling time for dynamic content
+                await this.delay(500);
               }
             } catch (error) {
               console.log(`Failed to trigger filter ${i + 1}:`, error);
             }
           }
+          
+          // Final settling time after all filters
+          await this.delay(2000);
+          console.log(`Completed all ${elements.length} filters, settling...`);
         }
       } catch (error) {
         console.log(`Error handling filter pattern ${pattern.selector}:`, error);
@@ -238,16 +262,42 @@ export class WebScraper {
         timeout: 45000 
       });
 
-      // Enhanced dynamic content loading
+      // Enhanced dynamic content loading with verification
       await this.delay(500);
       await this.clickAllTabs(page);
       await this.handleDynamicFilters(page);
       await this.clickLoadMore(page);
       await this.infiniteScroll(page);
 
-      // Simplified scraping - no stage/pagination detection
-      const html = await page.content();
-      const members = await this.parseTeamPage(html, firm.url);
+      // Verify consistent results with multiple attempts
+      let members: ScrapedMember[] = [];
+      let consistentCount = 0;
+      let lastCount = 0;
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await this.delay(1000); // Wait between attempts
+        const html = await page.content();
+        const attemptMembers = await this.parseTeamPage(html, firm.url);
+        
+        console.log(`Scrape attempt ${attempt}: found ${attemptMembers.length} members`);
+        
+        if (attemptMembers.length === lastCount) {
+          consistentCount++;
+        } else {
+          consistentCount = 1;
+        }
+        
+        members = attemptMembers;
+        lastCount = attemptMembers.length;
+        
+        // If we get consistent results twice in a row, we're done
+        if (consistentCount >= 2) {
+          console.log(`Consistent results achieved after ${attempt} attempts`);
+          break;
+        }
+      }
+      
+      console.log(`Final result: ${members.length} members (${consistentCount >= 2 ? 'consistent' : 'potentially inconsistent'})`);
       const screenshot = await page.screenshot({ fullPage: true }) as Buffer;
 
       await page.close();
