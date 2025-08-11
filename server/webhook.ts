@@ -16,7 +16,7 @@ export async function handleDeployWebhook(req: Request, res: Response) {
       'git fetch origin main',
       'git reset --hard origin/main',
       'npm ci',
-      'PATH=$PATH:./node_modules/.bin npm run build',
+      'npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist',
       'pm2 restart mt-server --update-env'
     ];
     
