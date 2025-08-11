@@ -273,6 +273,7 @@ export class WebScraper {
       let members: ScrapedMember[] = [];
       let consistentCount = 0;
       let lastCount = 0;
+      let finalHtml = '';
       
       for (let attempt = 1; attempt <= 3; attempt++) {
         await this.delay(1000); // Wait between attempts
@@ -288,6 +289,7 @@ export class WebScraper {
         }
         
         members = attemptMembers;
+        finalHtml = html;
         lastCount = attemptMembers.length;
         
         // If we get consistent results twice in a row, we're done
@@ -303,7 +305,7 @@ export class WebScraper {
       await page.close();
       
       console.log(`Successfully scraped ${firm.name} using Playwright - found ${members.length} members`);
-      return { members, html, screenshot };
+      return { members, html: finalHtml, screenshot };
     } catch (playwrightError) {
       console.error(`Playwright scraping failed for ${firm.name}:`, playwrightError);
       throw playwrightError;
