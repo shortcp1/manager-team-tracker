@@ -1,0 +1,225 @@
+
+
+# Manager Team Tracker — DigitalOcean/Vercel Handoff (08–11–2025)
+
+## 0) Goal
+Run the backend on a DigitalOcean Ubuntu droplet (Playwright-first scraping), fronted by Nginx, with optional Vercel API forwarders. Keep env/secrets off git. PM2 manages the process and loads `.env`.
+
+---
+
+## 1) Current Status (Working)
+- Droplet/IP: **138.197.117.133**
+- Linux user: **mtuser** (SSH key auth only; root SSH disabled; password auth disabled)
+- Firewall (UFW): **22, 80, 443** allowed
+- Swap: **2G** at `/swapfile` (persisted in `/etc/fstab`)
+- Node runtime: **Node v22.18.0** (via nvm), npm present
+- Process manager: **PM2** (`mt-server`)
+- App: Express server listening on **PORT=3000**
+- Reverse proxy: **Nginx → http://localhost:3000**
+- Health: `curl -I http://138.197.117.133` → **200 OK**
+- DB: Neon Postgres (requires **DATABASE_URL**; other PG vars supported)
+- Playwright: Installed with browsers/deps; scrapers to be Playwright-only
+
+---
+
+## 2) Files, Paths & Config
+**On the droplet (`~` = `/home/mtuser`):**
+- Repo root: `~/manager-team-tracker`
+- Env file (NOT in git): `~/manager-team-tracker/.env`
+- PM2 config (preferred): `~/manager-team-tracker/ecosystem.local.config.cjs` (CommonJS; uses `env_file: '.env'`)
+- PM2 process name: **mt-server**  (note: an older **mt-serve** appeared in logs; keep disabled/deleted)
+- Nginx site: `/etc/nginx/sites-available/manager-team-tracker` (symlinked to `.../sites-enabled/`)
+- Swapfile: `/swapfile`
+- Optional docs: `~/manager-team-tracker/docs/DO_CONTEXT.md`, `~/manager-team-tracker/docs/DEPLOYMENT_SUMMARY.md`
+
+**App code we touched / will touch:**
+- `server/index.ts` (Express bootstrap; add the Playwright test route here)
+- `api/scrape-names.js` (migrate to Playwright-only or wire via `server/index.ts`)
+- `api/scrape-firm-enhanced.js` (migrate to Playwright-only)
+- (Frontend on Vercel, optional) `/api/scrape-firm-forward.js`
+
+---
+
+## 3) Environment Variables (expected on DO, mirroring Vercel)
+Keep in `~/manager-team-tracker/.env` (one per line, **no `#` comments on the key lines**):
+
+DATABASE_URL=postgresql://:@/?sslmode=require
+PGDATABASE=…
+PGHOST=…
+PGPORT=…
+PGUSER=…
+PGPASSWORD=…
+
+SMTP_HOST=…
+SMTP_PORT=…
+SMTP_SECURE=…
+SMTP_USER=…
+SMTP_PASS=…
+EMAIL_FROM=…
+
+SESSION_SECRET=…
+
+PORT=3000
+NODE_ENV=production
+
+PM2 should load these from `.env` via `ecosystem.local.config.cjs` (`env_file: '.env'`). If needed, you can force-load once with `set -a; source .env; set +a; pm2 restart mt-server --update-env`.
+
+---
+
+## 4) Nginx Reverse Proxy (current)
+
+server {
+listen 80;
+server_name 138.197.117.133;
+
+location / {
+proxy_pass http://localhost:3000;
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection “upgrade”;
+proxy_set_header Host $host;
+proxy_cache_bypass $http_upgrade;
+}
+}
+
+(When a domain is ready, replace `server_name` with the domain and run certbot for HTTPS.)
+
+---
+
+## 5) What Happened / Fixes
+- **Permission denied (publickey):** fixed by adding Mac’s SSH pubkey; created `mtuser`; disabled root/password SSH.
+- **502 Bad Gateway:** app not listening on Nginx’s upstream → set `PORT=3000`, started via PM2, confirmed with `ss -ltnp`.
+- **PM2 restart loop:** missing `DATABASE_URL` at runtime → ensure `.env` is loaded by PM2 (`env_file` or `--update-env`).
+- **`npm` not found with sudo:** nvm path; use `npm exec` or `sudo env "PATH=$PATH" ...`.
+- **404 on `/api/scrape-names`:** route file existed but wasn’t registered in Express → add route to `server/index.ts`.
+
+---
+
+## 6) Playwright Migration (Practical Steps)
+**A) Add a simple Playwright test route (server-side)**
+_Edit `server/index.ts` and insert before `server.listen(...)`:_
+```ts
+app.get('/api/scrape-names', async (req, res) => {
+  try {
+    const { chromium } = await import('playwright');
+    const url = (req.query.url as string) || 'https://www.sequoiacap.com/our-team/';
+    const selectorParam = (req.query.selector as string) || '';
+    const defaults = [
+      '[class*="member"] h3, [class*="member"] .name',
+      '[class*="person"] h3, [class*="person"] .name',
+      '[class*="team"] a, [class*="people"] a',
+      '.team-member, .member-card, .person-card, .profile .name, .bio-card .name'
+    ];
+    const selectors = selectorParam ? [selectorParam] : defaults;
+
+    const browser = await chromium.launch({ headless: true, args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage'] });
+    const page = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      try { await page.click('text=/^(accept|agree|allow|got it|ok|accept all)$/i', { timeout: 2000 }); } catch {}
+      await page.evaluate(async () => { await new Promise<void>(r => { let t=0,d=350,i=setInterval(()=>{window.scrollBy(0,d);t+=d;if(t>=1400||(innerHeight+scrollY)>=document.documentElement.scrollHeight){clearInterval(i);r();}},120); }); });
+      let names: string[] = [];
+      for (const sel of selectors) {
+        const any = await page.$(sel);
+        if (!any) continue;
+        const found = await page.$$eval(sel, els => els.map(el => (el as HTMLElement).innerText?.trim()).filter(Boolean));
+        names.push(...found);
+      }
+      names = names.flatMap(t=>t.split('\n')).map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean)
+                   .filter(s=>/^[A-Z][a-z]+(?: [A-Z][a-z'.-]+)+$/.test(s))
+                   .filter((v,i,a)=>a.indexOf(v)===i).slice(0,200);
+
+      res.status(200).json({ message:'Playwright scrape OK', url, selector: selectorParam || '(defaults)', count: names.length, names, timestamp: new Date().toISOString() });
+    } finally { await browser.close(); }
+  } catch (err:any) { res.status(500).json({ error:'Scrape failed', details: err?.message || String(err) }); }
+});
+
+Rebuild + restart: npm run build && pm2 restart mt-server --update-env
+Test: curl -s "http://138.197.117.133/api/scrape-names" | head -c 600; echo
+
+B) Convert scrapers to Playwright-only
+	•	Files: api/scrape-names.js, api/scrape-firm-enhanced.js
+	•	Remove HTTP/axios branches; always: const { chromium } = require('playwright') (or ESM import), launch, navigate, extract, close.
+
+⸻
+
+7) Vercel Forwarder (Optional)
+
+Vercel API: /api/scrape-firm-forward.js
+
+export default async function handler(req, res) {
+  const { firmId } = req.query;
+  const r = await fetch(`${process.env.DO_SERVER_URL}/api/scrape-firm?firmId=${firmId}`, { method: 'POST' });
+  const data = await r.json();
+  res.status(r.status).json(data);
+}
+
+Vercel env: DO_SERVER_URL=http://138.197.117.133 (later https://your-domain.com after TLS). Redeploy.
+
+⸻
+
+8) Domain + HTTPS (When ready)
+	1.	Point A record to 138.197.117.133.
+	2.	Update Nginx server_name your-domain.com; reload Nginx.
+	3.	Issue certs:
+
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d your-domain.com --agree-tos -m you@example.com -n
+
+	4.	Flip Vercel DO_SERVER_URL to https.
+
+⸻
+
+9) Operations / Monitoring
+	•	PM2: pm2 ls · pm2 logs mt-server --lines 200 · pm2 restart mt-server --update-env · pm2 save
+	•	Nginx: sudo nginx -t && sudo systemctl reload nginx · journalctl -u nginx -f
+	•	Ports: ss -ltnp | grep :3000  · Local check: curl -I http://localhost:3000
+	•	System: htop · df -h · Firewall: sudo ufw status verbose
+
+PM2 log rotation (recommended):
+
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 10M
+pm2 set pm2-logrotate:retain 7
+pm2 set pm2-logrotate:compress true
+pm2 save
+
+
+⸻
+
+10) Redeploy Playbook
+
+cd ~/manager-team-tracker
+git pull
+npm ci
+npm run build || true
+pm2 restart mt-server --update-env
+pm2 logs mt-server --lines 50
+
+
+⸻
+
+11) Version/Runtime Notes
+	•	Node: v22.18.0
+	•	App defaults in code: PORT defaults to 5000 if not set → we set PORT=3000 in .env to match Nginx.
+	•	PM2 config must be CommonJS (.cjs) if the project uses "type": "module".
+
+⸻
+
+12) Open Items / Next Steps (checkboxes)
+	•	Add /api/scrape-names route to server/index.ts, rebuild, restart, test
+	•	Convert api/scrape-names.js and api/scrape-firm-enhanced.js to Playwright-only
+	•	(Optional) Create Vercel forwarder + set DO_SERVER_URL
+	•	(When domain ready) Nginx server_name → domain + run certbot; flip DO_SERVER_URL to https
+	•	Ensure PM2 uses ecosystem.local.config.cjs with env_file: '.env' (no manual source needed)
+	•	Enable PM2 logrotate (if not already)
+	•	(Git hygiene) Commit changes on a branch, PR → main; avoid committing .env
+
+⸻
+
+13) Security Summary
+	•	SSH: key-only, PermitRootLogin no, PasswordAuthentication no
+	•	UFW: 22/80/443 only
+	•	Secrets: stored only in .env (DO) and Vercel project settings (frontend); never in git
+
+If you want this as a file on the server too, tell me the filename and I’ll spit out a one-liner that writes it there.
