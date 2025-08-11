@@ -154,7 +154,7 @@ export class WebScraper {
       {
         selector: '.facetwp-radio',
         trigger: async (element: any) => {
-          await element.check(); // For radio inputs
+          await element.click(); // FacetwP uses divs with role="checkbox", not actual inputs
         }
       },
       // Generic data-filter pattern
