@@ -63,23 +63,52 @@ export class WebScraper {
 
   private async clickAllTabs(page: Page) {
     const tabSelectors = [
+      // Standard tab patterns
       '[role="tab"]',
       '.tabs button, .tabs [role="tab"]',
       'button[aria-controls]',
       '.tab, .tabs .tab',
+      // Filter-based navigation (like FacetwP, Isotope, etc.)
+      '.facetwp-radio',
+      '.filter-button',
+      '.filter-tab',
+      '[data-filter]',
+      '.category-filter',
+      '.portfolio-filter',
+      // Common filter patterns on investment firm sites
+      '.stage-filter',
+      '.investment-type-filter',
+      'input[type="radio"][name*="filter"]',
+      'button[data-category]',
+      'button[data-stage]',
     ];
 
+    let totalClicked = 0;
     for (const sel of tabSelectors) {
       const tabs = await page.locator(sel).all();
       if (tabs.length > 0) {
+        console.log(`Found ${tabs.length} elements for selector: ${sel}`);
         for (let i = 0; i < Math.min(tabs.length, 12); i++) {
           try {
-            await tabs[i].click();
-            await page.waitForLoadState('networkidle', { timeout: 5000 });
-            await this.delay(200);
-          } catch {}
+            // Check if element is visible and clickable
+            const isVisible = await tabs[i].isVisible();
+            const isEnabled = await tabs[i].isEnabled();
+            
+            if (isVisible && isEnabled) {
+              await tabs[i].click();
+              totalClicked++;
+              await page.waitForLoadState('networkidle', { timeout: 3000 });
+              await this.delay(300);
+              console.log(`Clicked tab ${i + 1}/${tabs.length} for selector: ${sel}`);
+            }
+          } catch (error) {
+            console.log(`Failed to click tab ${i + 1} for selector ${sel}:`, error);
+          }
         }
-        break;
+        // Don't break - try multiple selector types to catch all variations
+        if (totalClicked > 0) {
+          console.log(`Successfully clicked ${totalClicked} tabs/filters`);
+        }
       }
     }
   }
@@ -114,6 +143,62 @@ export class WebScraper {
       } else {
         stableCount = 0;
         lastHeight = newHeight;
+      }
+    }
+  }
+
+  private async handleDynamicFilters(page: Page) {
+    // Handle JavaScript-based filters (like FacetwP, Isotope, etc.)
+    const filterPatterns = [
+      // FacetwP pattern (Sequoia uses this)
+      {
+        selector: '.facetwp-radio',
+        trigger: async (element: any) => {
+          await element.check(); // For radio inputs
+        }
+      },
+      // Generic data-filter pattern
+      {
+        selector: '[data-filter]:not(.active)',
+        trigger: async (element: any) => {
+          await element.click();
+        }
+      },
+      // Category/tag filters
+      {
+        selector: '.category-filter:not(.active), .tag-filter:not(.active)',
+        trigger: async (element: any) => {
+          await element.click();
+        }
+      }
+    ];
+
+    for (const pattern of filterPatterns) {
+      try {
+        const elements = await page.locator(pattern.selector).all();
+        if (elements.length > 0) {
+          console.log(`Found ${elements.length} dynamic filters for pattern: ${pattern.selector}`);
+          
+          for (let i = 0; i < Math.min(elements.length, 8); i++) {
+            try {
+              const isVisible = await elements[i].isVisible();
+              if (isVisible) {
+                await pattern.trigger(elements[i]);
+                console.log(`Triggered dynamic filter ${i + 1}/${elements.length}`);
+                
+                // Wait for AJAX content to load
+                await page.waitForFunction(() => {
+                  return document.readyState === 'complete';
+                }, { timeout: 5000 });
+                await this.delay(800); // Extra time for AJAX
+              }
+            } catch (error) {
+              console.log(`Failed to trigger filter ${i + 1}:`, error);
+            }
+          }
+        }
+      } catch (error) {
+        console.log(`Error handling filter pattern ${pattern.selector}:`, error);
       }
     }
   }
@@ -180,9 +265,10 @@ export class WebScraper {
           timeout: 45000 
         });
 
-        // Try DOM-anchored waits and old tab/load more logic first
+        // Enhanced dynamic content loading
         await this.delay(500);
         await this.clickAllTabs(page);
+        await this.handleDynamicFilters(page);
         await this.clickLoadMore(page);
         await this.infiniteScroll(page);
 
