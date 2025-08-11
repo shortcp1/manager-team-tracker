@@ -71,9 +71,14 @@ export function serveStatic(app: Express) {
   const distPath = path.resolve(import.meta.dirname, "public");
 
   if (!fs.existsSync(distPath)) {
-    throw new Error(
-      `Could not find the build directory: ${distPath}, make sure to build the client first`,
-    );
+    log(`Warning: Build directory not found: ${distPath}. Frontend serving disabled, API routes still available.`);
+    // Only serve a basic response for non-API routes
+    app.use("*", (req, res) => {
+      if (!req.path.startsWith('/api')) {
+        res.status(503).json({ error: "Frontend not built", message: "API endpoints are available" });
+      }
+    });
+    return;
   }
 
   app.use(express.static(distPath));
