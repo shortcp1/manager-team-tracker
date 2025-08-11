@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { handleDeployWebhook } from "./webhook";
 
 const app = express();
 app.use(express.json());
@@ -73,6 +74,9 @@ app.get('/api/scrape-names', async (req, res) => {
 });
 
 (async () => {
+  // Webhook route for auto-deployment
+  app.post('/api/deploy', handleDeployWebhook);
+
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
