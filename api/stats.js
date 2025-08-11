@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     
     // Get recent activity
     const recentChangesResult = await pool.query(
-      'SELECT COUNT(*) as count FROM change_history WHERE created_at > NOW() - INTERVAL \'7 days\''
+      'SELECT COUNT(*) as count FROM change_history WHERE detected_at > NOW() - INTERVAL \'7 days\''
     );
     
     const stats = {

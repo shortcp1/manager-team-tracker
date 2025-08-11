@@ -29,8 +29,8 @@ export default async function handler(req, res) {
         SELECT ch.*, f.name as firm_name, f.type as firm_type 
         FROM change_history ch 
         LEFT JOIN firms f ON ch.firm_id = f.id 
-        WHERE ch.created_at > NOW() - INTERVAL '${days} days'
-        ORDER BY ch.created_at DESC 
+        WHERE ch.detected_at > NOW() - INTERVAL '${days} days'
+        ORDER BY ch.detected_at DESC 
         LIMIT $1
       `;
       params = [limit];
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
         SELECT ch.*, f.name as firm_name, f.type as firm_type 
         FROM change_history ch 
         LEFT JOIN firms f ON ch.firm_id = f.id 
-        ORDER BY ch.created_at DESC 
+        ORDER BY ch.detected_at DESC 
         LIMIT $1 OFFSET $2
       `;
       params = [limit, offset];
@@ -57,8 +57,8 @@ export default async function handler(req, res) {
       changeType: row.change_type,
       memberName: row.member_name,
       details: row.details,
-      createdAt: row.created_at,
-      timestamp: row.created_at
+      createdAt: row.detected_at,
+      timestamp: row.detected_at
     }));
 
     res.status(200).json(changes);
