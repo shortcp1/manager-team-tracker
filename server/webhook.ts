@@ -22,7 +22,13 @@ export async function handleDeployWebhook(req: Request, res: Response) {
     
     console.log('Running deployment commands...');
     const { stdout, stderr } = await execAsync(commands.join(' && '), {
-      timeout: 300000 // 5 minute timeout
+      timeout: 300000, // 5 minute timeout
+      env: {
+        ...process.env,
+        PATH: process.env.PATH + ':/usr/local/bin:/usr/bin:/bin',
+        NODE_ENV: 'production'
+      },
+      cwd: '/home/mtuser/manager-team-tracker'
     });
     
     console.log('✅ Deployment completed successfully');
