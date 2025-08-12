@@ -3,8 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
 import path from "path";
-import { scrapeWithPerplexity } from "./services/perplexity";
-import { parsePdfAndStore } from "./services/pdfParser";
+// Remove direct imports to avoid build issues in production
 import { insertFirmSchema, insertEmailSettingsSchema, type Firm } from "@shared/schema";
 import { z } from "zod";
 // Import these conditionally to avoid serverless issues
@@ -262,7 +261,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!firm) {
         return res.status(404).json({ message: "Firm not found" });
       }
+      
+      // Dynamic import to avoid build issues
+      const { scrapeWithPerplexity } = await import("./services/perplexity");
       const result = await scrapeWithPerplexity(firm);
+      
       if (result.error) {
         return res.status(500).json({ message: result.error });
       }
@@ -283,6 +286,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!file) {
         return res.status(400).json({ message: "PDF file required" });
       }
+      // Dynamic import to avoid build issues
+      const { parsePdfAndStore } = await import("./services/pdfParser");
       const result = await parsePdfAndStore(firm, file.path);
       if (result.error) {
         return res.status(500).json({ message: result.error });
