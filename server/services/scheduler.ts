@@ -31,8 +31,8 @@ export class SchedulerService {
     let errorCount = 0;
 
     try {
-      // Get all active firms
-      const firms = await storage.getFirmsByStatus('active');
+      // Get all firms regardless of status
+      const firms = await storage.getAllFirms();
       console.log(`Starting scrape job for ${firms.length} firms`);
 
       const allChanges = [];

@@ -354,15 +354,27 @@ export class WebScraper {
         screenshotPath,
       });
 
-      // Update firm's last scraped timestamp
-      await storage.updateFirm(firm.id, { lastScraped: new Date() });
+      // Store raw names
+      await storage.createNameScrapeResult({
+        firmId: firm.id,
+        method: 'web',
+        names: result.members.map(m => m.name) as string[],
+        status: 'success',
+      });
+
+      // Update firm's last scrape info
+      await storage.updateFirm(firm.id, {
+        lastScraped: new Date(),
+        lastScrapeStatus: 'success',
+        lastScrapeError: null,
+      });
 
       return { members: result.members };
     } catch (error) {
       console.error(`Error scraping ${firm.name}:`, error);
 
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       // Record failed scrape
       await storage.createScrapeHistory({
         firmId: firm.id,
@@ -373,8 +385,21 @@ export class WebScraper {
         duration: Date.now() - startTime,
       });
 
-      // Update firm status to error
-      await storage.updateFirm(firm.id, { status: 'error' });
+      // Store failed attempt
+      await storage.createNameScrapeResult({
+        firmId: firm.id,
+        method: 'web',
+        names: [] as string[],
+        status: 'error',
+        errorMessage,
+      });
+
+      // Update firm last scrape info
+      await storage.updateFirm(firm.id, {
+        lastScraped: new Date(),
+        lastScrapeStatus: 'error',
+        lastScrapeError: errorMessage,
+      });
 
       return { members: [], error: errorMessage };
     }

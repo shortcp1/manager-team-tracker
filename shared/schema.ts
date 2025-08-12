@@ -18,6 +18,8 @@ export const firms = pgTable("firms", {
   type: text("type").notNull(), // "Venture Capital" or "Private Equity"
   status: text("status").notNull().default("active"), // "active", "paused", "error"
   lastScraped: timestamp("last_scraped"),
+  lastScrapeStatus: text("last_scrape_status"),
+  lastScrapeError: text("last_scrape_error"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 });
@@ -82,6 +84,23 @@ export const scrapeHistory = pgTable("scrape_history", {
   htmlPath: text("html_path"),
 });
 
+export const nameScrapeResults = pgTable("name_scrape_results", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  firmId: varchar("firm_id").notNull().references(() => firms.id, { onDelete: "cascade" }),
+  method: text("method").notNull(), // 'web', 'perplexity', 'pdf'
+  names: jsonb("names").$type<string[]>().notNull(),
+  status: text("status").notNull(), // 'success' | 'error'
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+export const pdfUploads = pgTable("pdf_uploads", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  firmId: varchar("firm_id").notNull().references(() => firms.id, { onDelete: "cascade" }),
+  filePath: text("file_path").notNull(),
+  uploadedAt: timestamp("uploaded_at").notNull().default(sql`now()`),
+});
+
 export const emailSettings = pgTable("email_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   recipients: text("recipients").array().notNull(),
@@ -94,6 +113,8 @@ export const firmsRelations = relations(firms, ({ many }) => ({
   teamMembers: many(teamMembers),
   changeHistory: many(changeHistory),
   scrapeHistory: many(scrapeHistory),
+  nameScrapeResults: many(nameScrapeResults),
+  pdfUploads: many(pdfUploads),
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one, many }) => ({
@@ -122,6 +143,20 @@ export const scrapeHistoryRelations = relations(scrapeHistory, ({ one }) => ({
   }),
 }));
 
+export const nameScrapeResultsRelations = relations(nameScrapeResults, ({ one }) => ({
+  firm: one(firms, {
+    fields: [nameScrapeResults.firmId],
+    references: [firms.id],
+  }),
+}));
+
+export const pdfUploadsRelations = relations(pdfUploads, ({ one }) => ({
+  firm: one(firms, {
+    fields: [pdfUploads.firmId],
+    references: [firms.id],
+  }),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
@@ -131,6 +166,8 @@ export const insertUserSchema = createInsertSchema(users).pick({
 export const insertFirmSchema = createInsertSchema(firms).omit({
   id: true,
   lastScraped: true,
+  lastScrapeStatus: true,
+  lastScrapeError: true,
   createdAt: true,
   updatedAt: true,
 });
@@ -158,6 +195,16 @@ export const insertEmailSettingsSchema = createInsertSchema(emailSettings).omit(
   updatedAt: true,
 });
 
+export const insertNameScrapeResultSchema = createInsertSchema(nameScrapeResults).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPdfUploadSchema = createInsertSchema(pdfUploads).omit({
+  id: true,
+  uploadedAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -176,3 +223,9 @@ export type InsertScrapeHistory = z.infer<typeof insertScrapeHistorySchema>;
 
 export type EmailSettings = typeof emailSettings.$inferSelect;
 export type InsertEmailSettings = z.infer<typeof insertEmailSettingsSchema>;
+
+export type NameScrapeResult = typeof nameScrapeResults.$inferSelect;
+export type InsertNameScrapeResult = z.infer<typeof insertNameScrapeResultSchema>;
+
+export type PdfUpload = typeof pdfUploads.$inferSelect;
+export type InsertPdfUpload = z.infer<typeof insertPdfUploadSchema>;
