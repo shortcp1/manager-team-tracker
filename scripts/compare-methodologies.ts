@@ -392,8 +392,9 @@ async function main() {
   }
 }
 
-// Run if called directly
-if (require.main === module) {
+// Run if called directly (ES module compatible)
+import { pathToFileURL } from 'url';
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
 
