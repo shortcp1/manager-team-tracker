@@ -11,6 +11,7 @@
     "check": "tsc",
     "db:push": "drizzle-kit push",
     "compare:sequoia": "tsx scripts/compare-sequoia.ts",
+    "compare:methods": "tsx scripts/compare-methodologies.ts",
     "db:view": "tsx scripts/view-db.ts",
     "postinstall": "playwright install chromium"
   },

@@ -6,7 +6,7 @@
  */
 
 import { db } from '../server/db';
-import { firms, teamMembers, scrapeHistory, changeHistory, notificationSettings } from '../shared/schema';
+import { firms, teamMembers, scrapeHistory, changeHistory, emailSettings, nameScrapeResults } from '../shared/schema';
 import { desc, eq } from 'drizzle-orm';
 
 async function viewDatabase() {
@@ -52,11 +52,22 @@ async function viewDatabase() {
     });
     console.log();
 
-    // View notification settings
-    const settingsData = await db.select().from(notificationSettings).limit(5);
-    console.log(`🔔 Notification Settings (${settingsData.length}):`);
+    // View email settings
+    const settingsData = await db.select().from(emailSettings).limit(5);
+    console.log(`🔔 Email Settings (${settingsData.length}):`);
     settingsData.forEach(setting => {
-      console.log(`  • ${setting.recipients.join(', ')} - ${setting.isEnabled ? 'Enabled' : 'Disabled'}`);
+      console.log(`  • ${setting.recipients.join(', ')} - ${setting.enabled ? 'Enabled' : 'Disabled'}`);
+    });
+    console.log();
+
+    // View name scrape results
+    const nameResults = await db.select().from(nameScrapeResults)
+      .orderBy(desc(nameScrapeResults.createdAt))
+      .limit(10);
+    console.log(`📝 Recent Name Scrape Results (${nameResults.length}):`);
+    nameResults.forEach(result => {
+      const nameCount = Array.isArray(result.names) ? result.names.length : 0;
+      console.log(`  • ${result.method.toUpperCase()}: ${nameCount} names (${result.status}) - Firm ${result.firmId}`);
     });
 
   } catch (error) {
