@@ -1,8 +1,11 @@
-import { 
+import {
   users, firms, teamMembers, changeHistory, scrapeHistory, emailSettings,
-  type User, type InsertUser, type Firm, type InsertFirm, type TeamMember, 
+  nameScrapeResults, pdfUploads,
+  type User, type InsertUser, type Firm, type InsertFirm, type TeamMember,
   type InsertTeamMember, type ChangeHistory, type InsertChangeHistory,
-  type ScrapeHistory, type InsertScrapeHistory, type EmailSettings, type InsertEmailSettings
+  type ScrapeHistory, type InsertScrapeHistory, type EmailSettings, type InsertEmailSettings,
+  type NameScrapeResult, type InsertNameScrapeResult,
+  type PdfUpload, type InsertPdfUpload,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, isNull, gte, lte, count } from "drizzle-orm";
@@ -42,6 +45,14 @@ export interface IStorage {
   getScrapeHistory(firmId?: string, limit?: number): Promise<ScrapeHistory[]>;
   createScrapeHistory(scrape: InsertScrapeHistory): Promise<ScrapeHistory>;
   getLastScrapeForFirm(firmId: string): Promise<ScrapeHistory | undefined>;
+
+  // Name scrape result methods
+  createNameScrapeResult(result: InsertNameScrapeResult): Promise<NameScrapeResult>;
+  getNameScrapeResultsByFirm(firmId: string): Promise<NameScrapeResult[]>;
+
+  // PDF upload methods
+  createPdfUpload(upload: InsertPdfUpload): Promise<PdfUpload>;
+  getPdfUploadsByFirm(firmId: string): Promise<PdfUpload[]>;
 
   // Email settings methods
   getEmailSettings(): Promise<EmailSettings | undefined>;
@@ -218,8 +229,26 @@ export class DatabaseStorage implements IStorage {
       .where(eq(scrapeHistory.firmId, firmId))
       .orderBy(desc(scrapeHistory.scrapedAt))
       .limit(1);
-    
+
     return lastScrape || undefined;
+  }
+
+  async createNameScrapeResult(result: InsertNameScrapeResult): Promise<NameScrapeResult> {
+    const [newResult] = await db.insert(nameScrapeResults).values(result as any).returning();
+    return newResult;
+  }
+
+  async getNameScrapeResultsByFirm(firmId: string): Promise<NameScrapeResult[]> {
+    return await db.select().from(nameScrapeResults).where(eq(nameScrapeResults.firmId, firmId)).orderBy(desc(nameScrapeResults.createdAt));
+  }
+
+  async createPdfUpload(upload: InsertPdfUpload): Promise<PdfUpload> {
+    const [newUpload] = await db.insert(pdfUploads).values(upload).returning();
+    return newUpload;
+  }
+
+  async getPdfUploadsByFirm(firmId: string): Promise<PdfUpload[]> {
+    return await db.select().from(pdfUploads).where(eq(pdfUploads.firmId, firmId)).orderBy(desc(pdfUploads.uploadedAt));
   }
 
   async getEmailSettings(): Promise<EmailSettings | undefined> {

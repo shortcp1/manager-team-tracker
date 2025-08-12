@@ -1,6 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import multer from "multer";
+import path from "path";
+import { scrapeWithPerplexity } from "./services/perplexity";
+import { parsePdfAndStore } from "./services/pdfParser";
+import { insertFirmSchema, insertEmailSettingsSchema, type Firm } from "@shared/schema";
+import { z } from "zod";
 // Import these conditionally to avoid serverless issues
 let webScraper: any;
 let schedulerService: any;
@@ -16,8 +22,7 @@ async function getServices() {
   }
   return { webScraper, schedulerService };
 }
-import { insertFirmSchema, insertEmailSettingsSchema, type Firm } from "@shared/schema";
-import { z } from "zod";
+const upload = multer({ dest: path.join(process.cwd(), "uploads") });
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Dashboard stats
@@ -232,17 +237,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Experiment routes for name scraping comparisons
+  app.post("/api/experiments/firms/:id/web", async (req, res) => {
+    try {
+      const firm = await storage.getFirm(req.params.id);
+      if (!firm) {
+        return res.status(404).json({ message: "Firm not found" });
+      }
+      const { webScraper } = await getServices();
+      const result = await webScraper.scrapeFirm(firm);
+      if (result.error) {
+        return res.status(500).json({ message: result.error });
+      }
+      res.json({ names: result.members.map((m: any) => m.name) });
+    } catch (error) {
+      console.error("Experiment web scrape error:", error);
+      res.status(500).json({ message: "Failed to run web experiment" });
+    }
+  });
+
+  app.post("/api/experiments/firms/:id/perplexity", async (req, res) => {
+    try {
+      const firm = await storage.getFirm(req.params.id);
+      if (!firm) {
+        return res.status(404).json({ message: "Firm not found" });
+      }
+      const result = await scrapeWithPerplexity(firm);
+      if (result.error) {
+        return res.status(500).json({ message: result.error });
+      }
+      res.json({ names: result.names });
+    } catch (error) {
+      console.error("Perplexity scrape error:", error);
+      res.status(500).json({ message: "Failed to run Perplexity scrape" });
+    }
+  });
+
+  app.post("/api/experiments/firms/:id/pdf", upload.single('file'), async (req, res) => {
+    try {
+      const firm = await storage.getFirm(req.params.id);
+      if (!firm) {
+        return res.status(404).json({ message: "Firm not found" });
+      }
+      const file = (req as any).file;
+      if (!file) {
+        return res.status(400).json({ message: "PDF file required" });
+      }
+      const result = await parsePdfAndStore(firm, file.path);
+      if (result.error) {
+        return res.status(500).json({ message: result.error });
+      }
+      res.json({ names: result.names });
+    } catch (error) {
+      console.error("PDF scrape error:", error);
+      res.status(500).json({ message: "Failed to run PDF scrape" });
+    }
+  });
+
   app.post("/api/scrape/all", async (req, res) => {
     try {
       const firms = await storage.getAllFirms();
-      const activeFirms = firms.filter((firm: Firm) => firm.status === 'active');
-      
-      if (activeFirms.length === 0) {
+
+      if (firms.length === 0) {
         return res.json({
           firmsProcessed: 0,
           totalMembersFound: 0,
           totalChangesDetected: 0,
-          message: "No active firms to scrape",
+          message: "No firms to scrape",
         });
       }
 
@@ -250,7 +311,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let totalChangesDetected = 0;
       let firmsProcessed = 0;
 
-      for (const firm of activeFirms) {
+      for (const firm of firms) {
         try {
           const { webScraper } = await getServices();
           const result = await webScraper.scrapeFirm(firm);
@@ -271,7 +332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         firmsProcessed,
         totalMembersFound,
         totalChangesDetected,
-        message: `Successfully scraped ${firmsProcessed} of ${activeFirms.length} active firms`,
+        message: `Successfully scraped ${firmsProcessed} of ${firms.length} firms`,
       });
     } catch (error) {
       console.error("Error scraping all firms:", error);
