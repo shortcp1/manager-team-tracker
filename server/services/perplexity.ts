@@ -11,7 +11,7 @@ export async function scrapeWithPerplexity(firm: Firm): Promise<{ names: string[
         'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY || ''}`,
       },
       body: JSON.stringify({
-        model: 'pplx-7b-chat',
+        model: 'llama-3.1-sonar-small-128k-online',
         messages: [{ role: 'user', content: prompt }],
       }),
     });
