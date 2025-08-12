@@ -15,6 +15,14 @@ export interface ScrapedMember {
   title?: string;
   imageUrl?: string;
   profileUrl?: string;
+  email?: string;
+  phone?: string;
+  linkedinUrl?: string;
+  twitterUrl?: string;
+  githubUrl?: string;
+  normalizedName?: string;
+  normalizedTitle?: string;
+  entityKey?: string;
 }
 
 export class WebScraper {
@@ -398,12 +406,11 @@ export class WebScraper {
       '[class*="profile"]',
     ];
 
-    let orderIndex = 0;
     for (const selector of selectors) {
       const elements = $(selector);
       if (elements.length === 0) continue;
       elements.each((_: number, element: any) => {
-        const member = this.extractMemberInfo($, $(element), baseUrl, orderIndex++);
+        const member = this.extractMemberInfo($, $(element), baseUrl);
         if (member && member.name) {
           members.push(member);
         }
@@ -559,6 +566,21 @@ export class WebScraper {
     return members;
   }
 
+  private normalizeName(name: string): string {
+    return name.trim().toLowerCase();
+  }
+
+  private normalizeTitle(title: string): string {
+    return title.trim().toLowerCase();
+  }
+
+  private computeEntityKey(info: { name: string; email?: string; linkedinUrl?: string }): string {
+    const parts = [info.name, info.email, info.linkedinUrl]
+      .filter(Boolean)
+      .map((p) => (p as string).toLowerCase().trim());
+    return parts.join('|');
+  }
+
   private deduplicateMembers(members: ScrapedMember[]): ScrapedMember[] {
     const seen = new Set<string>();
     return members.filter(member => {
@@ -569,6 +591,79 @@ export class WebScraper {
       seen.add(key);
       return true;
     });
+  }
+
+  async detectChanges(firmId: string, members: ScrapedMember[]): Promise<number> {
+    const existingMembers = await storage.getTeamMembersByFirm(firmId);
+    const activeMembers = existingMembers.filter(m => m.isActive);
+    const existingMap = new Map<string, TeamMember>();
+    for (const m of activeMembers) {
+      existingMap.set(m.name.toLowerCase(), m);
+    }
+
+    let changes = 0;
+
+    for (const member of members) {
+      const key = member.name.toLowerCase();
+      const existing = existingMap.get(key);
+
+      if (!existing) {
+        const newMember = await storage.createTeamMember({
+          firmId,
+          name: member.name,
+          title: member.title,
+          imageUrl: member.imageUrl,
+          profileUrl: member.profileUrl,
+          isActive: true,
+        } as InsertTeamMember);
+
+        await storage.createChangeHistory({
+          firmId,
+          memberId: newMember.id,
+          changeType: 'added',
+          memberName: newMember.name,
+          memberTitle: newMember.title,
+          newData: newMember,
+        });
+        changes++;
+      } else {
+        const updates: any = {};
+        if (member.title !== existing.title) updates.title = member.title;
+        if (member.imageUrl !== existing.imageUrl) updates.imageUrl = member.imageUrl;
+        if (member.profileUrl !== existing.profileUrl) updates.profileUrl = member.profileUrl;
+
+        if (Object.keys(updates).length > 0) {
+          const updated = await storage.updateTeamMember(existing.id, updates);
+          await storage.createChangeHistory({
+            firmId,
+            memberId: existing.id,
+            changeType: 'updated',
+            memberName: updated.name,
+            memberTitle: updated.title,
+            previousData: existing,
+            newData: updated,
+          });
+          changes++;
+        }
+
+        existingMap.delete(key);
+      }
+    }
+
+    for (const remaining of Array.from(existingMap.values())) {
+      await storage.deactivateTeamMember(remaining.id);
+      await storage.createChangeHistory({
+        firmId,
+        memberId: remaining.id,
+        changeType: 'removed',
+        memberName: remaining.name,
+        memberTitle: remaining.title,
+        previousData: remaining,
+      });
+      changes++;
+    }
+
+    return changes;
   }
 
   async saveMembers(firmId: string, scrapedMembers: ScrapedMember[]): Promise<number> {
