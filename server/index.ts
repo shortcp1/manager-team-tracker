@@ -60,7 +60,19 @@ app.get('/api/scrape-names', async (req, res) => {
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
       try { await page.click('text=/^(accept|agree|allow|got it|ok|accept all)$/i', { timeout: 2000 }); } catch {}
-      await page.evaluate(async () => { await new Promise<void>(r => { let t=0,d=350,i=setInterval(()=>{window.scrollBy(0,d);t+=d;if(t>=1400||(innerHeight+scrollY)>=document.documentElement.scrollHeight){clearInterval(i);r();}},120); }); });
+      await page.evaluate(async () => { 
+        await new Promise<void>(r => { 
+          let t=0,d=350,i=setInterval(()=>{
+            window.scrollBy(0,d);
+            t+=d;
+            const docHeight = document.documentElement?.scrollHeight || document.body?.scrollHeight || 0;
+            if(t>=1400||(window.innerHeight+window.scrollY)>=docHeight){
+              clearInterval(i);
+              r();
+            }
+          },120); 
+        }); 
+      });
       let names: string[] = [];
       for (const sel of selectors) {
         const any = await page.$(sel);
