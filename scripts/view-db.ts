@@ -63,7 +63,7 @@ async function viewDatabase() {
     // View name scrape results
     const nameResults = await db.select().from(nameScrapeResults)
       .orderBy(desc(nameScrapeResults.createdAt))
-      .limit(10);
+      .limit(15);
     console.log(`📝 Recent Name Scrape Results (${nameResults.length}):`);
     nameResults.forEach(result => {
       const nameCount = Array.isArray(result.names) ? result.names.length : 0;
